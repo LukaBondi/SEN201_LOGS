@@ -1,7 +1,7 @@
 """
 similarity_search.py
 Author: Satwik Singh
-Date: 2025-01-09
+Date: October 6, 2025
 Purpose:
     Implements the Similarity Search module for the Photo Catalog Application.
     This module finds photos in the catalog with tags similar to a selected image.
