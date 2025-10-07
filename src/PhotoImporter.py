@@ -1,7 +1,7 @@
 """
 photo_importer.py
 Author: Satwik Singh
-Date: 2025-01-09
+Date: October 6, 2025
 Purpose:
     Handles importing photos into the Photo Catalog Application.
     This module reads image files from the local file system, collects metadata,
