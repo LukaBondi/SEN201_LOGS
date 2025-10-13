@@ -1,7 +1,7 @@
 """
-databaseManager.py
-Author: Oasis S.
-Date: 2025-10-07
+DatabaseManager.py
+Author: Chayenchanadhip Sevikul
+Date: 2025-10-06
 
 Purpose:
     This module manages a SQLite database that stores image metadata.
