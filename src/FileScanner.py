@@ -1,3 +1,12 @@
+"""
+FileScanner.py
+Author: Luka Chanakan Bond
+Date: October 7th, 2025
+
+Purpose:
+    Interacts with the file system to scan for files in directories
+"""
+
 import os
 
 def scanDirectory(directory: str, extensions: set[str] | None = None) -> list[str]:
