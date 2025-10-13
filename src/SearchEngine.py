@@ -1,6 +1,6 @@
 """
 searchEngine.py
-Author: Grace
+Author: Kanyanat Atsawabowornnan
 Date: 2025-10-07
 
 Purpose:
