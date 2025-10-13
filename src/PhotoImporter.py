@@ -21,19 +21,19 @@ class PhotoImporter:
     and communicates with the SQLite database via the CatalogManager.
     """
 
-    def __init__(self, db_path: str):
+    def __init__(self, dbPath: str):
         """
         Initializes the PhotoImporter.
 
         Args:
-            db_path (str): Path to the SQLite catalog database.
+            dbPath (str): Path to the SQLite catalog database.
         """
-        self.db_path = db_path
-        self.connection = sqlite3.connect(self.db_path)
+        self.dbPath = dbPath
+        self.connection = sqlite3.connect(self.dbPath)
         self.cursor = self.connection.cursor()
-        self._initialize_table()
+        self._initializeTable()
 
-    def _initialize_table(self) -> None:
+    def _initializeTable(self) -> None:
         """Creates the catalog table if it does not exist."""
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS photos (
@@ -47,12 +47,13 @@ class PhotoImporter:
         """)
         self.connection.commit()
 
-    def addPhoto(self, file_path: str, tags: List[str] = None, description: str = "") -> bool:
+    def addPhoto(self, filePath: str, tags: List[str] = None, 
+                 description: str = "") -> bool:
         """
         Adds a photo and its metadata to the catalog database.
 
         Args:
-            file_path (str): The full path of the photo file.
+            filePath (str): The full path of the photo file.
             tags (List[str]): Optional list of tags for the photo.
             description (str): Optional photo description.
 
@@ -62,15 +63,16 @@ class PhotoImporter:
         Raises:
             FileNotFoundError: If the photo does not exist at the given path.
         """
-        if not os.path.exists(file_path):
-            raise FileNotFoundError(f"Photo not found: {file_path}")
+        if not os.path.exists(filePath):
+            raise FileNotFoundError(f"Photo not found: {filePath}")
 
-        name = os.path.basename(file_path)
-        tag_string = ", ".join(tags) if tags else ""
-        date_added = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        name = os.path.basename(filePath)
+        tagString = ", ".join(tags) if tags else ""
+        dateAdded = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         # Check for duplicates
-        self.cursor.execute("SELECT id FROM photos WHERE file_path = ?", (file_path,))
+        self.cursor.execute("SELECT id FROM photos WHERE file_path = ?", 
+                          (filePath,))
         if self.cursor.fetchone():
             print(f"[Warning] Photo already exists in catalog: {name}")
             return False
@@ -78,9 +80,9 @@ class PhotoImporter:
         # Insert record
         try:
             self.cursor.execute("""
-                INSERT INTO photos (name, file_path, tags, description, date_added)
-                VALUES (?, ?, ?, ?, ?)
-            """, (name, file_path, tag_string, description, date_added))
+                INSERT INTO photos (name, file_path, tags, description, 
+                date_added) VALUES (?, ?, ?, ?, ?)
+            """, (name, filePath, tagString, description, dateAdded))
             self.connection.commit()
             print(f"[Info] Added photo: {name}")
             return True
@@ -95,7 +97,8 @@ class PhotoImporter:
         Returns:
             List[Dict[str, Any]]: List of photo records with metadata.
         """
-        self.cursor.execute("SELECT name, file_path, tags, description, date_added FROM photos")
+        self.cursor.execute("""SELECT name, file_path, tags, description, 
+                           date_added FROM photos""")
         records = self.cursor.fetchall()
         return [
             {
@@ -108,24 +111,24 @@ class PhotoImporter:
             for r in records
         ]
 
-    def removePhoto(self, file_path: str) -> bool:
+    def removePhoto(self, filePath: str) -> bool:
         """
         Removes a photo from the catalog.
 
         Args:
-            file_path (str): Path to the photo file to remove.
+            filePath (str): Path to the photo file to remove.
 
         Returns:
             bool: True if successfully removed, False otherwise.
         """
-        self.cursor.execute("DELETE FROM photos WHERE file_path = ?", (file_path,))
+        self.cursor.execute("DELETE FROM photos WHERE file_path = ?", 
+                          (filePath,))
         if self.cursor.rowcount > 0:
             self.connection.commit()
-            print(f"[Info] Removed photo: {file_path}")
+            print(f"[Info] Removed photo: {filePath}")
             return True
-        else:
-            print(f"[Warning] No record found for: {file_path}")
-            return False
+        print(f"[Warning] No record found for: {filePath}")
+        return False
 
     def __del__(self):
         """Closes the database connection upon deletion."""
