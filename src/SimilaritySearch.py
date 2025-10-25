@@ -43,14 +43,14 @@ class SimilaritySearch:
         Raises:
             ValueError: If the photo is not found in the database.
         """
-        self.cursor.execute("SELECT tags FROM photos WHERE name = ?", 
+        self.cursor.execute("SELECT tags FROM photos WHERE name = ?",
                           (photoName,))
         result = self.cursor.fetchone()
 
         if not result:
             raise ValueError(f"Photo '{photoName}' not found in catalog.")
 
-        tags = [t.strip().lower() for t in result[0].split(",") 
+        tags = [t.strip().lower() for t in result[0].split(",")
                 if t.strip()]
         return tags
 
@@ -97,6 +97,32 @@ class SimilaritySearch:
         print(f"[Info] Found {len(similarPhotos)} similar photo(s) for "
               f"'{photoName}'.")
         return similarPhotos
+
+    def findSimilarPhotosByTag(self, tag: str) -> List[tuple]:
+        """
+        Finds photos that contain the specified tag.
+
+        Args:
+            tag (str): Tag to search for.
+
+        Returns:
+            List[tuple]: List of photo tuples (id, name, file_path, album,
+                        tags, description, date_added) matching the tag.
+        """
+        if not tag or not tag.strip():
+            return []
+
+        tag = tag.strip()
+        query = """
+            SELECT id, name, file_path, album, tags, description, date_added
+            FROM photos
+            WHERE tags LIKE ?
+        """
+        self.cursor.execute(query, (f"%{tag}%",))
+        results = self.cursor.fetchall()
+
+        print(f"[Info] Found {len(results)} photo(s) with tag '{tag}'.")
+        return results
 
     def __del__(self):
         """Closes the database connection upon deletion."""

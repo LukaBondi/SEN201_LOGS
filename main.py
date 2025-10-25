@@ -1,6 +1,6 @@
 """
 main.py
-Author: LOGS Team
+Author: Satwik
 Date: October 25, 2025
 
 Purpose:
