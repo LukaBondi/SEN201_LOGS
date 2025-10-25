@@ -38,7 +38,7 @@ class SearchEngine:
             tags (str): Comma-separated list of tags to match (≥1 match).
 
         Returns:
-            list[tuple]: List of (id, title, tags, filepath) for matching photos.
+            list[tuple]: List of (id, name, tags, file_path) for matching photos.
         """
         cursor = self.connection.cursor()
 
@@ -47,7 +47,7 @@ class SearchEngine:
         params = []
 
         if title:
-            titleQuery = "title LIKE ?"
+            titleQuery = "name LIKE ?"
             params.append(f"%{title}%")
 
         if tags:
@@ -60,7 +60,7 @@ class SearchEngine:
                 tagQuery = "(" + " OR ".join(tagConditions) + ")"
 
         query = f"""
-            SELECT id, title, tags, filepath
+            SELECT id, name, tags, file_path
             FROM photos
             WHERE {titleQuery} AND {tagQuery}
         """
