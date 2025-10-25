@@ -47,13 +47,18 @@ class DatabaseManager:
                 date_added TEXT
             )
         """)
-        # Ensure 'favorite' column exists (added later)
+        # Ensure migration for older DBs: check for missing columns and add them if needed
         try:
             cursor.execute("PRAGMA table_info(photos)")
             cols = [row[1] for row in cursor.fetchall()]
+            # Add 'album' column if it's missing in older DBs
+            if 'album' not in cols:
+                cursor.execute("ALTER TABLE photos ADD COLUMN album TEXT DEFAULT ''")
+            # Add 'favorite' column if it's missing (added later in history)
             if 'favorite' not in cols:
                 cursor.execute("ALTER TABLE photos ADD COLUMN favorite INTEGER DEFAULT 0")
         except Exception:
+            # In case PRAGMA or ALTER TABLE fails (e.g., locked DB), continue gracefully
             pass
         # Ensure tags master table exists
         cursor.execute(
