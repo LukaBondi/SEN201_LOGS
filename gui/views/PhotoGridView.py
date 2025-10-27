@@ -31,6 +31,8 @@ class PhotoGridView(QWidget):
 
         if photos is not None:
             self.setPhotos(photos)
+        self._select_mode = False
+        self._cards = []
 
     def clear(self):
         while self._gridLayout.count():
@@ -40,6 +42,7 @@ class PhotoGridView(QWidget):
         if self._placeholder is not None:
             self._placeholder.setParent(None)
             self._placeholder = None
+        self._cards = []
 
     def setPhotos(self, photos: list):
         self.clear()
@@ -57,7 +60,27 @@ class PhotoGridView(QWidget):
             card.photoClicked.connect(self.photoClicked.emit)
             card.deleteRequested.connect(self.deleteRequested.emit)
             self._gridLayout.addWidget(card, row, col)
+            self._cards.append(card)
             col += 1
             if col >= 3:
                 col = 0
                 row += 1
+
+    def enableSelectionMode(self, enable: bool = True):
+        """Enable or disable selection mode on cards."""
+        self._select_mode = enable
+        for card in getattr(self, '_cards', []):
+            card.is_selectable = enable
+            if not enable:
+                # clear selection visual
+                if card.is_selected:
+                    card.is_selected = False
+                    card.setStyleSheet(card.styleSheet().replace(getattr(card, '_selected_style', ''), ''))
+
+    def getSelectedFilePaths(self) -> list:
+        """Return file paths for currently selected cards."""
+        selected = []
+        for card in getattr(self, '_cards', []):
+            if getattr(card, 'is_selected', False):
+                selected.append(getattr(card, 'file_path', None))
+        return [p for p in selected if p]

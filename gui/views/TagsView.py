@@ -18,9 +18,13 @@ class TagsView(QWidget):
         self._buildUI()
 
     def _buildUI(self):
+        from PyQt6.QtCore import Qt
+
         root = QVBoxLayout(self)
-        root.setContentsMargins(0, 0, 0, 0)
+        # Match the main content padding so titles and controls align across views
+        root.setContentsMargins(5, 5, 30, 40)
         root.setSpacing(0)
+        root.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         titleLabel = QLabel("Tags")
         titleLabel.setStyleSheet("font-size: 14pt; font-weight: 600; color: #504B38; margin-bottom: 20px;")

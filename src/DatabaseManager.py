@@ -68,6 +68,14 @@ class DatabaseManager:
             )
             """
         )
+        # Ensure albums master table exists (so empty albums can be created)
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS albums (
+                name TEXT PRIMARY KEY
+            )
+            """
+        )
         connection.commit()
         connection.close()
 
@@ -266,14 +274,39 @@ class DatabaseManager:
         """
         connection = sqlite3.connect(self.dbPath)
         cursor = connection.cursor()
+        # Return union of albums table and distinct album values from photos
         cursor.execute("""
-            SELECT DISTINCT album FROM photos
-            WHERE album IS NOT NULL AND album != ''
-            ORDER BY album
+            SELECT name FROM albums
+            UNION
+            SELECT DISTINCT album FROM photos WHERE album IS NOT NULL AND album != ''
+            ORDER BY name
         """)
         results = cursor.fetchall()
         connection.close()
         return [r[0] for r in results]
+
+    def createAlbum(self, name: str) -> None:
+        """Create an album record in the albums master table (no-op if exists)."""
+        name = (name or '').strip()
+        if not name:
+            return
+        connection = sqlite3.connect(self.dbPath)
+        cursor = connection.cursor()
+        try:
+            cursor.execute("INSERT OR IGNORE INTO albums(name) VALUES(?)", (name,))
+            connection.commit()
+        finally:
+            connection.close()
+
+    def setAlbumForFile(self, filePath: str, album: str) -> None:
+        """Assign an album to a photo identified by its file path."""
+        connection = sqlite3.connect(self.dbPath)
+        cursor = connection.cursor()
+        try:
+            cursor.execute("UPDATE photos SET album = ? WHERE file_path = ?", (album, filePath))
+            connection.commit()
+        finally:
+            connection.close()
 
     def getPhotosByAlbum(self, album: str) -> List[Tuple]:
         """

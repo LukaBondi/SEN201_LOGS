@@ -88,6 +88,23 @@ class ImportDialog(QDialog):
         )
         buttonBox.accepted.connect(self._onAccept)
         buttonBox.rejected.connect(self.reject)
+        # Style the dialog buttons so they are visible on the light dialog background
+        buttonBox.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #B9B28A;
+                color: #2d2d2d;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 14px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #504B38;
+                color: #F8F3D9;
+            }
+            """
+        )
         layout.addWidget(buttonBox)
 
     def _onAccept(self):

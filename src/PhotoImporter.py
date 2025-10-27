@@ -95,6 +95,18 @@ class PhotoImporter:
                 date_added) VALUES (?, ?, ?, ?, ?, ?)
             """, (name, filePath, album, tagString, description, dateAdded))
             self.connection.commit()
+            # Ensure tags are added to the master tags table so the TagsView can list them
+            if tags:
+                try:
+                    for t in tags:
+                        t_clean = (t or '').strip()
+                        if not t_clean:
+                            continue
+                        self.cursor.execute("INSERT OR IGNORE INTO tags(name) VALUES(?)", (t_clean,))
+                    self.connection.commit()
+                except Exception:
+                    # Non-fatal: if tags table doesn't exist or insertion fails, continue
+                    pass
             print(f"[Info] Added photo: {name}")
             return True
         except sqlite3.Error as e:

@@ -37,6 +37,8 @@ class PhotoCard(QFrame):
         super().__init__(parent)
         self.photo = photo
         self._parsePhotoData()
+        self.is_selectable = False
+        self.is_selected = False
         self._setupUI()
     
     def _parsePhotoData(self):
@@ -64,6 +66,8 @@ class PhotoCard(QFrame):
                 border: 2px solid #B9B28A;
             }
         """)
+        # Selection styling (applies when card is selected)
+        self._selected_style = "border: 2px solid #2A7AE2; background-color: #E8F0FF;"
         
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -157,6 +161,16 @@ class PhotoCard(QFrame):
             self.deleteRequested.emit(self.file_path)
     
     def mousePressEvent(self, event):
-        """Handle mouse press to emit photoClicked signal."""
-        self.photoClicked.emit(self.photo)
+        """Handle mouse press to emit photoClicked signal or toggle selection if selectable."""
+        if self.is_selectable:
+            # Toggle selection state and update visual
+            self.is_selected = not self.is_selected
+            if self.is_selected:
+                # apply selected style
+                self.setStyleSheet(self.styleSheet() + self._selected_style)
+            else:
+                # reset style
+                self.setStyleSheet(self.styleSheet().replace(self._selected_style, ""))
+        else:
+            self.photoClicked.emit(self.photo)
         super().mousePressEvent(event)

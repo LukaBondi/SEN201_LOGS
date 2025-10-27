@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                               QTabWidget, QGroupBox, QScrollArea, QComboBox,
                               QInputDialog, QGridLayout, QFrame, QSplitter,
                               QDialog, QDialogButtonBox, QProgressDialog)
-from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtCore import Qt, QSize, QTimer
 from PyQt6.QtGui import QPixmap, QIcon
 
 from src.PhotoImporter import PhotoImporter
@@ -104,7 +104,8 @@ class MainWindow(QMainWindow):
         # Top bar
         topBar = QWidget()
         topBar.setFixedHeight(80)
-        topBar.setStyleSheet("background-color: #EBE5C2; border-bottom: 1px solid #B9B28A;")
+        # Remove bottom border to avoid the thin line under the toolbar
+        topBar.setStyleSheet("background-color: #EBE5C2;")
         topBarLayout = QHBoxLayout(topBar)
         topBarLayout.setContentsMargins(30, 20, 30, 20)
         topBarLayout.setSpacing(15)
@@ -117,15 +118,41 @@ class MainWindow(QMainWindow):
         
         self.searchInput = QLineEdit()
         self.searchInput.setPlaceholderText("🔍 Search")
-        self.searchInput.setFixedWidth(250)
-        self.searchInput.setFixedHeight(40)
+        self.searchInput.setFixedWidth(300)
+        self.searchInput.setFixedHeight(42)
+        # Polished input style
+        self.searchInput.setStyleSheet("""
+            QLineEdit {
+                background-color: #F8F6EB;
+                border: 1px solid #D6CFAA;
+                border-radius: 8px;
+                padding: 8px 12px;
+                color: #504B38;
+            }
+            QLineEdit:focus {
+                border: 1px solid #B9B28A;
+                background-color: #FFFFFF;
+            }
+        """)
         self.searchInput.textChanged.connect(self._onNameSearch)
         searchRowLayout.addWidget(self.searchInput)
         
         self.tagsFilterCombo = QComboBox()
         self.tagsFilterCombo.addItem("TAGS ▼")
-        self.tagsFilterCombo.setFixedWidth(120)
-        self.tagsFilterCombo.setFixedHeight(40)
+        self.tagsFilterCombo.setFixedWidth(140)
+        self.tagsFilterCombo.setFixedHeight(42)
+        # ComboBox styling to match input
+        self.tagsFilterCombo.setStyleSheet("""
+            QComboBox {
+                background-color: #F8F6EB;
+                border: 1px solid #D6CFAA;
+                border-radius: 8px;
+                padding: 6px 10px;
+                color: #504B38;
+            }
+            QComboBox::drop-down { border: none; }
+            QComboBox QAbstractItemView { background: #FFF; }
+        """)
         self.tagsFilterCombo.currentIndexChanged.connect(self._onTagSearch)
         self._populateTagsDropdown()
         searchRowLayout.addWidget(self.tagsFilterCombo)
@@ -135,15 +162,16 @@ class MainWindow(QMainWindow):
         self.searchBtn.setFixedHeight(40)
         self.searchBtn.setStyleSheet("""
             QPushButton {
-                background-color: #B9B28A;
+                background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1, stop:0 #E6E0C7, stop:1 #D9D2AA);
                 color: #504B38;
-                border: 2px solid #504B38;
-                border-radius: 4px;
-                font-weight: 600;
+                border: 1px solid #B9B28A;
+                border-radius: 8px;
+                font-weight: 700;
+                padding: 8px 10px;
             }
             QPushButton:hover {
-                background-color: #504B38;
-                color: white;
+                background-color: #B9B28A;
+                color: #F8F3D9;
             }
         """)
         self.searchBtn.clicked.connect(self._onExplicitSearch)
@@ -158,15 +186,16 @@ class MainWindow(QMainWindow):
         self.uploadBtn.setFixedHeight(40)
         self.uploadBtn.setStyleSheet("""
             QPushButton {
-                background-color: white;
+                background-color: #FFFFFF;
                 color: #504B38;
-                border: 2px solid #504B38;
-                border-radius: 4px;
-                font-weight: 600;
+                border: 1px dashed #CFC6A3;
+                border-radius: 8px;
+                font-weight: 700;
+                padding: 8px 10px;
             }
             QPushButton:hover {
-                background-color: #504B38;
-                color: white;
+                background-color: #F0EEDC;
+                color: #333;
             }
         """)
         self.uploadBtn.clicked.connect(self._openUploadDialog)
@@ -409,6 +438,25 @@ class MainWindow(QMainWindow):
         self.viewerOverlay.show()
         self.viewerOverlay.raise_()
 
+    def _showImportDialog(self, filePath: str):
+        """Show the ImportDialog for a single file and handle result."""
+        try:
+            dlg = ImportDialog(self, filePath, self.dbManager.getAllAlbums())
+            result = dlg.exec()
+            if result == QDialog.DialogCode.Accepted:
+                album = dlg.selectedAlbum()
+                tags = dlg.tags()
+                description = dlg.description()
+                success = self.photoImporter.addPhoto(filePath, album, tags, description)
+                if success:
+                    QMessageBox.information(self, "Imported", "Photo imported successfully.")
+                    if self.currentView == "all_photos":
+                        self._switchView("all_photos")
+                else:
+                    QMessageBox.warning(self, "Duplicate", "This photo is already in the catalog.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to import photo:\n{str(e)}")
+
     def _onViewerClosed(self):
         """Handle viewer close."""
         if hasattr(self, 'viewerOverlay') and self.viewerOverlay:
@@ -469,44 +517,75 @@ class MainWindow(QMainWindow):
         )
         
         if dirPath:
-            # Show bulk import confirmation
-            self._performBulkImport(dirPath)
-
-    def _showImportDialog(self, filePath):
-        """Show dialog to add metadata for single photo import using ImportDialog component."""
-        # Load existing albums
-        try:
-            albums = self.dbManager.getAllAlbums()
-        except Exception:
-            albums = []
-
-        dialog = ImportDialog(self, filePath, albums)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            album = dialog.selectedAlbum()
-            tags = dialog.tags()
-            description = dialog.description()
-            try:
-                success = self.photoImporter.addPhoto(filePath, album, tags, description)
-                if success:
-                    QMessageBox.information(self, "Success", "Photo imported successfully!")
-                    if self.currentView == "all_photos":
-                        self._switchView("all_photos")
-                else:
-                    QMessageBox.warning(self, "Duplicate", "This photo is already in the catalog.")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to import photo:\n{str(e)}")
-
-    def _performBulkImport(self, dirPath):
-        """Perform bulk import from directory."""
-        try:
-            # Scan directory
+            # Scan directory for photos first, then ask user which import mode to use
             foundFiles = scanDirectory(dirPath)
-            
             if not foundFiles:
-                QMessageBox.information(self, "No Photos Found",
-                                      f"No image files found in:\n{dirPath}")
+                QMessageBox.information(self, "Bulk Import", "No photos found in the selected directory.")
                 return
-            
+
+            # Ask user which import mode to use: Import All, Interactive, or Cancel
+            modeBox = QMessageBox(self)
+            modeBox.setWindowTitle("Bulk Import")
+            modeBox.setText(f"Found {len(foundFiles)} photo(s). Choose import mode:")
+            importAllBtn = modeBox.addButton("Import All (no metadata)", QMessageBox.ButtonRole.AcceptRole)
+            interactiveBtn = modeBox.addButton("Interactive (enter metadata per file)", QMessageBox.ButtonRole.ActionRole)
+            cancelBtn = modeBox.addButton(QMessageBox.StandardButton.Cancel)
+            modeBox.exec()
+            chosen = modeBox.clickedButton()
+            if chosen == cancelBtn:
+                return
+            if chosen == importAllBtn:
+                # Non-interactive batch import
+                imported = 0
+                skipped = 0
+                progress = QProgressDialog("Importing photos...", "Cancel", 0, len(foundFiles), self)
+                progress.setWindowModality(Qt.WindowModality.WindowModal)
+                for i, filePath in enumerate(foundFiles):
+                    if progress.wasCanceled():
+                        break
+                    progress.setValue(i)
+                    success = self.photoImporter.addPhoto(filePath, "", [], "")
+                    if success:
+                        imported += 1
+                    else:
+                        skipped += 1
+                progress.setValue(len(foundFiles))
+                QMessageBox.information(
+                    self,
+                    "Import Complete",
+                    f"Imported: {imported} photo(s)\nSkipped (duplicates/errors): {skipped}"
+                )
+                if self.currentView == "all_photos":
+                    self._switchView("all_photos")
+            else:
+                # Interactive per-file import: show ImportDialog.exec() for each file sequentially
+                imported = 0
+                skipped = 0
+                total = len(foundFiles)
+                for idx, filePath in enumerate(foundFiles, start=1):
+                    dlg = ImportDialog(self, filePath, self.dbManager.getAllAlbums())
+                    dlg.setWindowModality(Qt.WindowModality.ApplicationModal)
+                    result = dlg.exec()
+                    if result == QDialog.DialogCode.Accepted:
+                        album = dlg.selectedAlbum()
+                        tags = dlg.tags()
+                        description = dlg.description()
+                        try:
+                            success = self.photoImporter.addPhoto(filePath, album, tags, description)
+                            if success:
+                                imported += 1
+                        except Exception:
+                            skipped += 1
+                    else:
+                        # User cancelled interactive import; stop the batch
+                        break
+                QMessageBox.information(
+                    self,
+                    "Import Complete",
+                    f"Imported: {imported} photo(s)\nSkipped (duplicates/errors): {skipped}"
+                )
+                if self.currentView == "all_photos":
+                    self._switchView("all_photos")
             # Ask for confirmation
             reply = QMessageBox.question(
                 self,
@@ -516,39 +595,53 @@ class MainWindow(QMainWindow):
             )
             
             if reply == QMessageBox.StandardButton.Yes:
+                print('[bulk import] user confirmed import, asking mode')
+                # Ask whether user wants interactive per-file metadata entry
+                perFile, ok = QInputDialog.getItem(
+                    self,
+                    "Import Mode",
+                    "Choose import mode:",
+                    ["Import All (no metadata)", "Interactive (enter metadata per file)"],
+                    0,
+                    False,
+                )
+                if not ok:
+                    print('[bulk import] user cancelled mode selection')
+                    return
+
                 imported = 0
                 skipped = 0
-                
-                # Show progress
-                progress = QProgressDialog("Importing photos...", "Cancel", 0, len(foundFiles), self)
-                progress.setWindowModality(Qt.WindowModality.WindowModal)
-                
-                for i, filePath in enumerate(foundFiles):
-                    if progress.wasCanceled():
-                        break
-                    
-                    progress.setValue(i)
-                    success = self.photoImporter.addPhoto(filePath, "", [], "")
-                    if success:
-                        imported += 1
-                    else:
-                        skipped += 1
-                
-                progress.setValue(len(foundFiles))
-                
+
+                print(f'[bulk import] mode selected: {perFile}')
+                if perFile == "Import All (no metadata)":
+                    # Non-interactive batch import (existing behavior)
+                    progress = QProgressDialog("Importing photos...", "Cancel", 0, len(foundFiles), self)
+                    progress.setWindowModality(Qt.WindowModality.WindowModal)
+                    for i, filePath in enumerate(foundFiles):
+                        if progress.wasCanceled():
+                            break
+                        progress.setValue(i)
+                        success = self.photoImporter.addPhoto(filePath, "", [], "")
+                        if success:
+                            imported += 1
+                        else:
+                            skipped += 1
+                    progress.setValue(len(foundFiles))
+                else:
+                    # Start a non-blocking interactive import queue to avoid freezing
+                    self._startInteractiveBulkImport(foundFiles)
+                    # We don't block here; the interactive flow will manage itself and show a completion message
+
                 # Show results
                 QMessageBox.information(
                     self,
                     "Import Complete",
-                    f"Imported: {imported} photo(s)\nSkipped (duplicates): {skipped}"
+                    f"Imported: {imported} photo(s)\nSkipped (duplicates/errors): {skipped}"
                 )
-                
+
                 # Refresh view
                 if self.currentView == "all_photos":
                     self._switchView("all_photos")
-                    
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to import:\n{str(e)}")
 
 
     def _showAlbumsView(self):
@@ -560,7 +653,83 @@ class MainWindow(QMainWindow):
 
         view = AlbumsView(albums, self)
         view.albumSelected.connect(self._showPhotosInAlbum)
+        view.createAlbumRequested.connect(self._onCreateAlbumRequested)
+        view.selectPhotosRequested.connect(self._onSelectPhotosRequested)
         self.contentLayout.addWidget(view)
+
+    def _onCreateAlbumRequested(self):
+        """Prompt for album name and create it."""
+        name, ok = QInputDialog.getText(self, "Create Album", "Album name:")
+        if not ok:
+            return
+        name = (name or '').strip()
+        if not name:
+            QMessageBox.warning(self, "Missing Name", "Please enter an album name.")
+            return
+        try:
+            self.dbManager.createAlbum(name)
+            QMessageBox.information(self, "Album Created", f"Album '{name}' created.")
+            # Refresh albums view
+            self._switchView("albums")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to create album:\n{str(e)}")
+
+    def _onSelectPhotosRequested(self, album: str):
+        """Begin the select-photos-to-album flow for the given album."""
+        # Show a temporary panel that lists all photos in selectable mode
+        try:
+            all_photos = self.photoImporter.listImportedPhotos()
+            # Exclude photos that already belong to the target album
+            photos = [p for p in all_photos if (p.get('album') or '') != album]
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to load photos:\n{str(e)}")
+            return
+
+        # Clear current content and show selection UI
+        while self.contentLayout.count():
+            child = self.contentLayout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+        titleLabel = QLabel(f"Select photos to add to album: {album}")
+        titleLabel.setStyleSheet("font-size: 14pt; font-weight: 600; color: #504B38; margin-bottom: 20px;")
+        self.contentLayout.addWidget(titleLabel)
+
+        grid = PhotoGridView(photos, "No photos found.", self)
+        grid.photoClicked.connect(self._onPhotoCardClicked)
+        grid.deleteRequested.connect(self._onPhotoDeleteRequested)
+        grid.setPhotos(photos)
+        grid.enableSelectionMode(True)
+        self.contentLayout.addWidget(grid)
+
+        # Action buttons
+        actions = QWidget()
+        actionsLayout = QHBoxLayout(actions)
+        addBtn = QPushButton("Add Selected to Album")
+        addBtn.clicked.connect(lambda: self._addSelectedToAlbum(grid, album))
+        cancelBtn = QPushButton("Cancel")
+        cancelBtn.clicked.connect(lambda: self._switchView("albums"))
+        actionsLayout.addWidget(addBtn)
+        actionsLayout.addWidget(cancelBtn)
+        self.contentLayout.addWidget(actions)
+        self.contentLayout.addStretch()
+
+    def _addSelectedToAlbum(self, grid: 'PhotoGridView', album: str):
+        """Assign the selected photos in the grid to the given album."""
+        selected = grid.getSelectedFilePaths()
+        if not selected:
+            QMessageBox.information(self, "No Selection", "Please select one or more photos to add.")
+            return
+        try:
+            # Ensure album exists
+            self.dbManager.createAlbum(album)
+            for fp in selected:
+                self.dbManager.setAlbumForFile(fp, album)
+            QMessageBox.information(self, "Success", f"Added {len(selected)} photo(s) to '{album}'.")
+            # Return to albums view
+            self._switchView("albums")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to assign photos to album:\n{str(e)}")
 
     def _showPhotosInAlbum(self, album):
         """Display all photos in the selected album."""
@@ -653,6 +822,81 @@ class MainWindow(QMainWindow):
 
         view.createTagClicked.connect(onCreate)
         view.deleteTagClicked.connect(onDelete)
+
+    # --- Interactive bulk import helpers ---
+    def _startInteractiveBulkImport(self, files: list[str]):
+        """Initialize state for non-blocking interactive bulk import."""
+        if not files:
+            QMessageBox.information(self, "Import", "No files to import.")
+            return
+        self._bulk_queue = list(files)
+        self._bulk_total = len(files)
+        self._bulk_imported = 0
+        self._bulk_skipped = 0
+        # Persistent progress dialog
+        self._bulk_progress = QProgressDialog("Importing photos...", "Cancel", 0, self._bulk_total, self)
+        # Make the progress dialog non-modal so the per-file ImportDialog can receive focus
+        self._bulk_progress.setWindowModality(Qt.WindowModality.NonModal)
+        self._bulk_progress.setValue(0)
+        # Start processing
+        QTimer.singleShot(0, self._processNextInteractiveImport)
+
+    def _processNextInteractiveImport(self):
+        """Process the next file in the interactive import queue."""
+        if not getattr(self, '_bulk_queue', None):
+            # Finished
+            try:
+                self._bulk_progress.close()
+            except Exception:
+                pass
+            QMessageBox.information(self, "Import Complete", f"Imported: {self._bulk_imported} photo(s)\nSkipped: {self._bulk_skipped}")
+            if getattr(self, 'currentView', None) == 'all_photos':
+                self._switchView('all_photos')
+            return
+
+        if self._bulk_progress.wasCanceled():
+            # Stop the queue
+            self._bulk_queue = []
+            self._bulk_progress.close()
+            QMessageBox.information(self, "Import Cancelled", f"Imported: {self._bulk_imported} photo(s)\nSkipped: {self._bulk_skipped}")
+            return
+
+        filePath = self._bulk_queue.pop(0)
+        currentIndex = self._bulk_imported + self._bulk_skipped + 1
+        self._bulk_progress.setLabelText(f"Importing {currentIndex} of {self._bulk_total}: {os.path.basename(filePath)}")
+        self._bulk_progress.setValue(currentIndex - 1)
+
+        # Show ImportDialog non-blocking: we show it and connect to its finished signal
+        dialog = ImportDialog(self, filePath, self.dbManager.getAllAlbums())
+        # When dialog is finished, handle result
+        def on_finished(result):
+            try:
+                if result == QDialog.DialogCode.Accepted:
+                    album = dialog.selectedAlbum()
+                    tags = dialog.tags()
+                    description = dialog.description()
+                    try:
+                        success = self.photoImporter.addPhoto(filePath, album, tags, description)
+                        if success:
+                            self._bulk_imported += 1
+                        else:
+                            self._bulk_skipped += 1
+                    except Exception:
+                        self._bulk_skipped += 1
+                else:
+                    # Treat rejection as skip/stop: here we'll stop the entire batch
+                    # To allow skipping a single file while continuing, change this logic
+                    self._bulk_queue = []
+                # Continue to next file
+                QTimer.singleShot(0, self._processNextInteractiveImport)
+            finally:
+                try:
+                    dialog.deleteLater()
+                except Exception:
+                    pass
+
+        dialog.finished.connect(on_finished)
+        dialog.show()
 
     def _onSearchChanged(self, text):
         """Handle search input changes."""
