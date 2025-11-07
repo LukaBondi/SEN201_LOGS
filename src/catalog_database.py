@@ -45,6 +45,7 @@ class CatalogDatabase:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 file_uuid TEXT UNIQUE NOT NULL,
                 name TEXT NOT NULL,
+                original_filename TEXT,
                 description TEXT,
                 file_type TEXT,
                 file_size INTEGER,
@@ -99,6 +100,19 @@ class CatalogDatabase:
             cursor = self.conn.cursor()
             cursor.executescript(schema_sql)
             self.conn.commit()
+            
+            # Migration: Add original_filename column if it doesn't exist
+            try:
+                cursor.execute("PRAGMA table_info(photos)")
+                columns = [row[1] for row in cursor.fetchall()]
+                if 'original_filename' not in columns:
+                    cursor.execute("ALTER TABLE photos ADD COLUMN original_filename TEXT")
+                    # Populate original_filename with current name for existing records
+                    cursor.execute("UPDATE photos SET original_filename = name WHERE original_filename IS NULL")
+                    self.conn.commit()
+            except sqlite3.Error:
+                pass
+            
             return True
         except sqlite3.Error:
             return False
@@ -132,6 +146,7 @@ class CatalogDatabase:
             file_type = original_path.suffix.lower().lstrip('.')
             file_size = original_path.stat().st_size
             display_name = name or original_path.stem
+            original_filename = original_path.name  # Store the original filename
             
             # Copy file to storage
             stored_path = self.storage_dir / f"{file_uuid}.{file_type}"
@@ -140,9 +155,9 @@ class CatalogDatabase:
             # Insert into database
             cursor = self.conn.cursor()
             cursor.execute("""
-                INSERT INTO photos (file_uuid, name, description, file_type, file_size, checksum)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (file_uuid, display_name, description, file_type, file_size, checksum))
+                INSERT INTO photos (file_uuid, name, original_filename, description, file_type, file_size, checksum)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (file_uuid, display_name, original_filename, description, file_type, file_size, checksum))
             
             photo_id = cursor.lastrowid
             
@@ -186,6 +201,11 @@ class CatalogDatabase:
     def _add_tag_to_photo(self, photo_id: int, tag_name: str) -> bool:
         """Add tag to photo (creates tag if needed). Returns success."""
         try:
+            # Normalize tag name to lowercase to prevent duplicates with different cases
+            tag_name = tag_name.strip().lower()
+            if not tag_name:
+                return False
+            
             cursor = self.conn.cursor()
             cursor.execute("INSERT OR IGNORE INTO tags (name) VALUES (?)", (tag_name,))
             cursor.execute("""
@@ -328,6 +348,11 @@ class CatalogDatabase:
     def create_tag(self, tag_name: str) -> bool:
         """Create a new tag. Returns True if successful."""
         try:
+            # Normalize tag name to lowercase to prevent duplicates with different cases
+            tag_name = tag_name.strip().lower()
+            if not tag_name:
+                return False
+            
             cursor = self.conn.cursor()
             cursor.execute("INSERT INTO tags (name) VALUES (?)", (tag_name,))
             self.conn.commit()
@@ -340,6 +365,12 @@ class CatalogDatabase:
     def update_tag(self, old_name: str, new_name: str) -> bool:
         """Update tag name. Returns True if successful."""
         try:
+            # Normalize both tag names to lowercase
+            old_name = old_name.strip().lower()
+            new_name = new_name.strip().lower()
+            if not old_name or not new_name:
+                return False
+            
             cursor = self.conn.cursor()
             cursor.execute("UPDATE tags SET name = ? WHERE name = ?", (new_name, old_name))
             self.conn.commit()
@@ -352,6 +383,11 @@ class CatalogDatabase:
     def delete_tag(self, tag_name: str) -> bool:
         """Delete a tag and remove all photo associations. Returns True if successful."""
         try:
+            # Normalize tag name to lowercase
+            tag_name = tag_name.strip().lower()
+            if not tag_name:
+                return False
+            
             cursor = self.conn.cursor()
             cursor.execute("DELETE FROM tags WHERE name = ?", (tag_name,))
             self.conn.commit()
@@ -372,6 +408,11 @@ class CatalogDatabase:
     def add_tag_to_photo(self, file_uuid: str, tag_name: str) -> bool:
         """Add tag to photo (creates tag if needed). Returns True if successful."""
         try:
+            # Normalize tag name to lowercase to prevent duplicates with different cases
+            tag_name = tag_name.strip().lower()
+            if not tag_name:
+                return False
+            
             # Ensure tag exists
             self.create_tag(tag_name)
             
@@ -390,6 +431,11 @@ class CatalogDatabase:
     def remove_tag_from_photo(self, file_uuid: str, tag_name: str) -> bool:
         """Remove tag from photo. Returns True if successful."""
         try:
+            # Normalize tag name to lowercase
+            tag_name = tag_name.strip().lower()
+            if not tag_name:
+                return False
+            
             cursor = self.conn.cursor()
             cursor.execute("""
                 DELETE FROM photo_tags 
@@ -467,6 +513,8 @@ class CatalogDatabase:
     def search_tags_by_name(self, query: str) -> List[Dict]:
         """Search tags by name. Returns empty list on error."""
         try:
+            # Normalize query to lowercase for case-insensitive search
+            query = query.strip().lower()
             cursor = self.conn.cursor()
             cursor.execute("SELECT * FROM tags WHERE name LIKE ? ORDER BY name", (f"%{query}%",))
             return [dict(row) for row in cursor.fetchall()]
@@ -479,6 +527,11 @@ class CatalogDatabase:
             return []
         
         try:
+            # Normalize all tag names to lowercase
+            tags = [tag.strip().lower() for tag in tags if tag.strip()]
+            if not tags:
+                return []
+            
             placeholders = ','.join(['?'] * len(tags))
             
             if require_all:

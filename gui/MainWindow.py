@@ -1690,9 +1690,18 @@ class MainWindow(QMainWindow):
             tag = text.strip()
             if tag:
                 try:
-                    self.catalogDb.create_tag(tag)
-                    QMessageBox.information(self, "Success", f"Tag '{tag}' created successfully!")
-                    self._switchView("tags")
+                    success = self.catalogDb.create_tag(tag)
+                    if success:
+                        QMessageBox.information(self, "Success", f"Tag '{tag.lower()}' created successfully!")
+                        self._switchView("tags")
+                    else:
+                        # Tag already exists (case-insensitive)
+                        QMessageBox.warning(
+                            self, 
+                            "Tag Already Exists", 
+                            f"Tag '{tag.lower()}' already exists.\n\n"
+                            "Note: Tags are case-insensitive, so 'Nature', 'NATURE', and 'nature' are treated as the same tag."
+                        )
                 except Exception as e:
                     QMessageBox.critical(self, "Error", f"Failed to create tag:\n{str(e)}")
 
@@ -1702,44 +1711,42 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Empty Name", "Tag name cannot be empty.")
             return
         
-        if new_name == old_name:
+        # Normalize for comparison (since tags are stored lowercase)
+        new_name_normalized = new_name.strip().lower()
+        old_name_normalized = old_name.strip().lower()
+        
+        if new_name_normalized == old_name_normalized:
             dialog.accept()
             return
         
         try:
-            # Update tag name in database
-            # Note: This assumes you have an update_tag method. If not, we'll delete and recreate
-            # For now, let's use a simple approach: delete old and create new
-            # But first check if new name already exists
+            # Check if new name already exists (case-insensitive)
             existing_tags = [tag.get('name', tag) if isinstance(tag, dict) else tag 
                            for tag in self.catalogDb.get_all_tags()]
-            if new_name in existing_tags:
-                QMessageBox.warning(self, "Duplicate", f"Tag '{new_name}' already exists.")
+            
+            if new_name_normalized in [t.lower() for t in existing_tags]:
+                QMessageBox.warning(
+                    self, 
+                    "Tag Already Exists", 
+                    f"Tag '{new_name_normalized}' already exists.\n\n"
+                    "Note: Tags are case-insensitive, so 'Nature', 'NATURE', and 'nature' are treated as the same tag."
+                )
                 return
             
-            # Get all photos with this tag
-            photos_with_tag = self.catalogDb.search_photos_by_tags([old_name])
+            # Update tag name using the database method
+            success = self.catalogDb.update_tag(old_name, new_name)
             
-            # Delete old tag
-            self.catalogDb.delete_tag(old_name)
-            
-            # Create new tag
-            self.catalogDb.create_tag(new_name)
-            
-            # Re-add tag to photos
-            for photo in photos_with_tag:
-                file_uuid = photo.get('file_uuid', '')
-                if file_uuid:
-                    # Get current tags
-                    current_tags = photo.get('tags', '').split(',')
-                    current_tags = [t.strip() for t in current_tags if t.strip() and t.strip() != old_name]
-                    current_tags.append(new_name)
-                    # Update photo tags
-                    self.catalogDb.update_photo_tags(file_uuid, ','.join(current_tags))
-            
-            QMessageBox.information(self, "Success", f"Tag renamed from '{old_name}' to '{new_name}'!")
-            dialog.accept()
-            self._switchView("tags")
+            if success:
+                QMessageBox.information(self, "Success", f"Tag renamed from '{old_name_normalized}' to '{new_name_normalized}'!")
+                dialog.accept()
+                self._switchView("tags")
+            else:
+                QMessageBox.warning(
+                    self,
+                    "Tag Already Exists",
+                    f"Tag '{new_name_normalized}' already exists.\n\n"
+                    "Note: Tags are case-insensitive, so 'Nature', 'NATURE', and 'nature' are treated as the same tag."
+                )
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to update tag:\n{str(e)}")
 

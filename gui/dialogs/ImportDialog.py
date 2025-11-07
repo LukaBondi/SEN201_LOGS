@@ -6,7 +6,7 @@ tags, and description.
 """
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QLabel, QHBoxLayout, QComboBox,
-    QLineEdit, QDialogButtonBox
+    QLineEdit, QDialogButtonBox, QCompleter
 )
 from PyQt6.QtCore import Qt
 import os
@@ -70,6 +70,49 @@ class ImportDialog(QDialog):
         tagsLayout.addWidget(QLabel("Tags:"))
         self.tagsInput = QLineEdit()
         self.tagsInput.setPlaceholderText("e.g., nature, landscape, sunset")
+        
+        # Set up autocomplete for tags if parent has catalogDb
+        try:
+            if hasattr(self.parent(), 'catalogDb'):
+                catalogDb = self.parent().catalogDb
+                tags_data = catalogDb.get_all_tags()
+                # Extract tag names from dictionaries
+                all_tags = [tag.get('name', tag) if isinstance(tag, dict) else tag for tag in tags_data]
+                
+                if all_tags:
+                    # Create completer with existing tags
+                    completer = QCompleter(all_tags)
+                    completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+                    completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+                    completer.setFilterMode(Qt.MatchFlag.MatchContains)
+                    
+                    # Style the completer popup
+                    completer.popup().setStyleSheet("""
+                        QListView {
+                            background-color: #FFFFFF;
+                            border: 1px solid #D6CFAA;
+                            border-radius: 4px;
+                            padding: 4px;
+                            color: #504B38;
+                            font-size: 10pt;
+                        }
+                        QListView::item {
+                            padding: 6px;
+                            border-radius: 3px;
+                        }
+                        QListView::item:selected {
+                            background-color: #F0EEDC;
+                            color: #504B38;
+                        }
+                        QListView::item:hover {
+                            background-color: #F8F6EB;
+                        }
+                    """)
+                    
+                    self.tagsInput.setCompleter(completer)
+        except Exception:
+            pass  # If we can't get tags, just continue without autocomplete
+        
         tagsLayout.addWidget(self.tagsInput)
         layout.addLayout(tagsLayout)
 
