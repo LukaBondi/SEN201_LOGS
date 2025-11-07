@@ -300,3 +300,4 @@ def getSubtitleStyle():
         padding: 5px;
         background-color: transparent;
     """
+

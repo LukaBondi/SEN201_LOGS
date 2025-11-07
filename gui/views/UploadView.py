@@ -14,9 +14,9 @@ class UploadView(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._setupUI()
+        self._setupUi()
 
-    def _setupUI(self):
+    def _setupUi(self):
         mainLayout = QVBoxLayout(self)
         mainLayout.setContentsMargins(30, 30, 30, 30)
 
@@ -93,3 +93,6 @@ class UploadView(QWidget):
 
         # Bottom stretch
         mainLayout.addStretch(1)
+
+
+

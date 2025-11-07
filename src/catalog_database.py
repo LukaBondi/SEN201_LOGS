@@ -1,7 +1,7 @@
 """
-database_manager.py
+catalog_database.py
 Author: Chayenchanadhip Sevikul
-Date: 2025-10-06
+Date: October 6, 2025
 
 Purpose:
     This module manages a SQLite database for the photo catalog app.

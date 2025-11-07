@@ -27,9 +27,9 @@ class ImportDialog(QDialog):
         self._tagsText = ""
         self._description = ""
 
-        self._buildUI()
+        self._buildUi()
 
-    def _buildUI(self):
+    def _buildUi(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(12)
@@ -180,3 +180,4 @@ class ImportDialog(QDialog):
 
     def filePath(self) -> str:
         return self._filePath
+

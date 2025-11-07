@@ -46,9 +46,9 @@ class PhotoViewer(QWidget):
         super().__init__(parent)
         self.catalogDb = dbManager  # CatalogDatabase instance
         self.photoImporter = photoImporter
-        self.photoData = self._normalizePhotoData(photo)
+        self.photo_data = self._normalizePhotoData(photo)
         
-        self._setupUI()
+        self._setupUi()
         
     def _normalizePhotoData(self, photo):
         """
@@ -87,7 +87,7 @@ class PhotoViewer(QWidget):
                 'favorite': photo[7] if len(photo) > 7 else 0,
             }
     
-    def _setupUI(self):
+    def _setupUi(self):
         """Set up the user interface."""
         # Full-screen overlay styling
         self.setStyleSheet("background-color: rgba(0, 0, 0, 180);")
@@ -186,7 +186,7 @@ class PhotoViewer(QWidget):
         self.imageLabel.setStyleSheet("background-color: #1a1a1a;")
         self.imageLabel.setScaledContents(False)  # Don't stretch, we'll scale manually
         
-        file_path = self.photoData['file_path']
+        file_path = self.photo_data['file_path']
         if file_path and isinstance(file_path, str) and os.path.exists(file_path):
             self.originalPixmap = QPixmap(file_path)
             if not self.originalPixmap.isNull():
@@ -269,7 +269,12 @@ class PhotoViewer(QWidget):
         return infoPanel
     
     def _addNameSection(self, layout):
-        """Add editable image name section to layout."""
+        """
+        Add editable image name section to layout.
+        
+        Args:
+            layout: Layout to add the name section to.
+        """
         nameLabel = QLabel("IMAGE NAME")
         nameLabel.setStyleSheet("""
             color: #2d2d2d;
@@ -292,7 +297,7 @@ class PhotoViewer(QWidget):
         nameRowLayout.setSpacing(8)
         
         # Display name
-        self.nameValueLabel = QLabel(self.photoData['name'])
+        self.nameValueLabel = QLabel(self.photo_data['name'])
         self.nameValueLabel.setStyleSheet("""
             color: #2d2d2d;
             font-size: 14pt;
@@ -339,9 +344,14 @@ class PhotoViewer(QWidget):
         layout.addWidget(self.nameContainer)
     
     def _updateOriginalFilenameDisplay(self):
-        """Update the original filename label visibility and text."""
-        original = self.photoData.get('original_filename', '')
-        current = self.photoData.get('name', '')
+        """
+        Update the original filename label visibility and text.
+        
+        Shows original filename only if it differs from the current name.
+        Hides the label if names are the same or no original exists.
+        """
+        original = self.photo_data.get('original_filename', '')
+        current = self.photo_data.get('name', '')
         
         # Only show if original filename exists and is different from current name
         if original and original != current:
@@ -356,7 +366,11 @@ class PhotoViewer(QWidget):
             self.originalFilenameLabel.setVisible(False)
     
     def _onEditNameClicked(self):
-        """Switch to edit mode for photo name."""
+        """
+        Switch to edit mode for photo name.
+        
+        Replaces the display label with an input field and Save/Cancel buttons.
+        """
         # Clear the container
         while self.nameContainerLayout.count():
             child = self.nameContainerLayout.takeAt(0)
@@ -371,7 +385,7 @@ class PhotoViewer(QWidget):
         
         # Name input field
         self.nameLineEdit = QLineEdit()
-        self.nameLineEdit.setText(self.photoData.get('name', ''))
+        self.nameLineEdit.setText(self.photo_data.get('name', ''))
         self.nameLineEdit.setStyleSheet("""
             QLineEdit {
                 color: #2d2d2d;
@@ -429,7 +443,12 @@ class PhotoViewer(QWidget):
         self.nameLineEdit.selectAll()
     
     def _onSaveName(self):
-        """Save the name to database."""
+        """
+        Save the new photo name to database.
+        
+        Updates the photo name in the database and refreshes the display.
+        Shows error message if save fails.
+        """
         name = self.nameLineEdit.text().strip()
         
         if not name:
@@ -437,13 +456,13 @@ class PhotoViewer(QWidget):
             return
         
         # Check if name actually changed - if not, just cancel
-        current_name = self.photoData.get('name', '')
+        current_name = self.photo_data.get('name', '')
         if name == current_name:
             # No change, just restore display mode
             self._onCancelNameEdit()
             return
         
-        file_uuid = self.photoData.get('file_uuid')
+        file_uuid = self.photo_data.get('file_uuid')
         if not file_uuid:
             QMessageBox.warning(self, "Error", "Photo UUID not found.")
             return
@@ -454,7 +473,7 @@ class PhotoViewer(QWidget):
             
             if success:
                 # Update local data
-                self.photoData['name'] = name
+                self.photo_data['name'] = name
                 
                 # Clear the container and show the new name with edit button
                 while self.nameContainerLayout.count():
@@ -519,7 +538,11 @@ class PhotoViewer(QWidget):
             QMessageBox.warning(self, "Error", f"Failed to save name: {str(e)}")
     
     def _onCancelNameEdit(self):
-        """Cancel name editing and restore display label with edit button."""
+        """
+        Cancel name editing and restore display label with edit button.
+        
+        Discards any changes and returns to view mode.
+        """
         # Clear the container
         while self.nameContainerLayout.count():
             child = self.nameContainerLayout.takeAt(0)
@@ -527,7 +550,7 @@ class PhotoViewer(QWidget):
                 child.widget().deleteLater()
         
         # Restore the name label with edit button
-        name = self.photoData.get('name', 'Untitled')
+        name = self.photo_data.get('name', 'Untitled')
         
         # Row with name and edit button
         nameRow = QWidget()
@@ -582,7 +605,12 @@ class PhotoViewer(QWidget):
         self._updateOriginalFilenameDisplay()
     
     def _addDescriptionSection(self, layout):
-        """Add description section to layout."""
+        """
+        Add description section to layout.
+        
+        Args:
+            layout: Layout to add the description section to.
+        """
         descLabel = QLabel("Description")
         descLabel.setStyleSheet("""
             color: #2d2d2d;
@@ -599,7 +627,7 @@ class PhotoViewer(QWidget):
         self.descContainerLayout.setContentsMargins(0, 0, 0, 0)
         self.descContainerLayout.setSpacing(5)
         
-        description = self.photoData.get('description') or ''
+        description = self.photo_data.get('description') or ''
         
         if description:
             # Show existing description with edit button
@@ -663,7 +691,12 @@ class PhotoViewer(QWidget):
         layout.addWidget(self.descContainer)
     
     def _addTagsSection(self, layout):
-        """Add tags display section to layout."""
+        """
+        Add tags display section to layout.
+        
+        Args:
+            layout: Layout to add the tags section to.
+        """
         tagsHeaderLabel = QLabel("TAGS")
         tagsHeaderLabel.setStyleSheet("""
             color: #2d2d2d;
@@ -681,7 +714,7 @@ class PhotoViewer(QWidget):
         self.tagsContainerLayout.setSpacing(5)
         
         # Parse tags
-        tags_val = self.photoData['tags']
+        tags_val = self.photo_data['tags']
         if tags_val:
             tags = [tag.strip() for tag in str(tags_val).split(',') if tag.strip()]
         else:
@@ -706,7 +739,15 @@ class PhotoViewer(QWidget):
         layout.addWidget(self.tagsContainer)
     
     def _createTagChip(self, tag):
-        """Create a removable tag chip widget."""
+        """
+        Create a removable tag chip widget.
+        
+        Args:
+            tag (str): Tag name to display.
+            
+        Returns:
+            QWidget: Tag chip widget with remove button.
+        """
         chipWidget = QWidget()
         chipLayout = QHBoxLayout(chipWidget)
         chipLayout.setContentsMargins(8, 4, 8, 4)
@@ -752,8 +793,13 @@ class PhotoViewer(QWidget):
         return chipWidget
     
     def _onRemoveTag(self, tag):
-        """Remove a tag from the photo."""
-        file_uuid = self.photoData.get('file_uuid')
+        """
+        Remove a tag from the photo.
+        
+        Args:
+            tag (str): Tag name to remove.
+        """
+        file_uuid = self.photo_data.get('file_uuid')
         if not file_uuid:
             QMessageBox.warning(self, "Error", "Photo UUID not found.")
             return
@@ -775,13 +821,13 @@ class PhotoViewer(QWidget):
             
             if success:
                 # Update local data
-                tags_val = self.photoData['tags']
+                tags_val = self.photo_data['tags']
                 if tags_val:
                     tags_list = [t.strip() for t in str(tags_val).split(',') if t.strip()]
                     tags_list = [t for t in tags_list if t != tag]
-                    self.photoData['tags'] = ','.join(tags_list) if tags_list else ''
+                    self.photo_data['tags'] = ','.join(tags_list) if tags_list else ''
                 else:
-                    self.photoData['tags'] = ''
+                    self.photo_data['tags'] = ''
                 
                 # Refresh tags display
                 self._refreshTagsDisplay()
@@ -791,7 +837,12 @@ class PhotoViewer(QWidget):
             QMessageBox.warning(self, "Error", f"Failed to remove tag: {str(e)}")
     
     def _refreshTagsDisplay(self):
-        """Refresh the tags display after adding or removing tags."""
+        """
+        Refresh the tags display after adding or removing tags.
+        
+        Clears the current tags container and rebuilds it with updated tags.
+        Shows "No tags yet" message if no tags exist.
+        """
         # Clear current tags display
         while self.tagsContainerLayout.count():
             child = self.tagsContainerLayout.takeAt(0)
@@ -799,7 +850,7 @@ class PhotoViewer(QWidget):
                 child.widget().deleteLater()
         
         # Parse updated tags
-        tags_val = self.photoData['tags']
+        tags_val = self.photo_data['tags']
         if tags_val:
             tags = [tag.strip() for tag in str(tags_val).split(',') if tag.strip()]
         else:
@@ -822,8 +873,13 @@ class PhotoViewer(QWidget):
                 self.tagsContainerLayout.addWidget(tagChip)
     
     def _addFavoritesButton(self, layout):
-        """Add favorites toggle button to layout."""
-        favorite_val = bool(self.photoData.get('favorite', 0))
+        """
+        Add favorites toggle button to layout.
+        
+        Args:
+            layout: Layout to add the favorites button to.
+        """
+        favorite_val = bool(self.photo_data.get('favorite', 0))
         self.favBtn = QPushButton("Remove from Favorites" if favorite_val else "Add to Favorites")
         self.favBtn.setStyleSheet("""
             QPushButton {
@@ -841,7 +897,12 @@ class PhotoViewer(QWidget):
         layout.addWidget(self.favBtn)
     
     def _addDeleteButton(self, layout):
-        """Add delete button to layout."""
+        """
+        Add delete button to layout.
+        
+        Args:
+            layout: Layout to add the delete button to.
+        """
         deleteViewerBtn = QPushButton("Delete From Catalog")
         deleteViewerBtn.setStyleSheet("""
             QPushButton {
@@ -854,7 +915,12 @@ class PhotoViewer(QWidget):
         layout.addWidget(deleteViewerBtn)
     
     def _addTagInputSection(self, layout):
-        """Add interactive tag input section to layout."""
+        """
+        Add interactive tag input section to layout.
+        
+        Args:
+            layout: Layout to add the tag input section to.
+        """
         tagInputWidget = QWidget()
         tagInputLayout = QHBoxLayout(tagInputWidget)
         tagInputLayout.setContentsMargins(0, 0, 0, 0)
@@ -996,7 +1062,7 @@ class PhotoViewer(QWidget):
             if tag:
                 # Add tag to photo (creates tag if needed)
                 try:
-                    file_uuid = self.photoData.get('file_uuid')
+                    file_uuid = self.photo_data.get('file_uuid')
                     if not file_uuid:
                         QMessageBox.warning(self, "Error", "Photo UUID not found.")
                         return
@@ -1010,7 +1076,7 @@ class PhotoViewer(QWidget):
                         newTags = ', '.join(tags_list) if tags_list else ''
                         
                         # Update local data
-                        self.photoData['tags'] = newTags
+                        self.photo_data['tags'] = newTags
                         
                         # Refresh tags display
                         self._refreshTagsDisplay()
@@ -1019,8 +1085,8 @@ class PhotoViewer(QWidget):
                         resetTagInput()
                         
                         # Emit signal to notify parent (but don't close viewer)
-                        photo_id = self.photoData.get('id')
-                        file_path = self.photoData.get('file_path')
+                        photo_id = self.photo_data.get('id')
+                        file_path = self.photo_data.get('file_path')
                         self.tagAdded.emit(photo_id, file_path, newTags)
                     else:
                         QMessageBox.warning(
@@ -1042,7 +1108,7 @@ class PhotoViewer(QWidget):
     
     def _addDateLabel(self, layout):
         """Add date label to layout."""
-        dateLabel = QLabel(f"Photo taken on\n{self.photoData['date_added']}")
+        dateLabel = QLabel(f"Photo taken on\n{self.photo_data['date_added']}")
         dateLabel.setStyleSheet("""
             color: #504B38;
             font-size: 8pt;
@@ -1053,13 +1119,13 @@ class PhotoViewer(QWidget):
     
     def _onEditDescriptionClicked(self):
         """Handle 'Edit' button click for existing description."""
-        existing_description = self.photoData.get('description') or ''
+        existing_description = self.photo_data.get('description') or ''
         self._onAddDescriptionClicked(existing_description)
     
     def _onAddDescriptionClicked(self, existing_text=''):
         """Handle 'Add Description' button click - show inline edit field."""
         # Store original description for comparison (handle None values)
-        self.originalDescription = self.photoData.get('description') or ''
+        self.originalDescription = self.photo_data.get('description') or ''
         
         # Ensure existing_text is never None
         if existing_text is None:
@@ -1157,7 +1223,7 @@ class PhotoViewer(QWidget):
             QMessageBox.warning(self, "Empty Description", "Please enter a description or click Cancel.")
             return
         
-        file_uuid = self.photoData.get('file_uuid')
+        file_uuid = self.photo_data.get('file_uuid')
         if not file_uuid:
             QMessageBox.warning(self, "Error", "Photo UUID not found.")
             return
@@ -1168,7 +1234,7 @@ class PhotoViewer(QWidget):
             
             if success:
                 # Update local data
-                self.photoData['description'] = description
+                self.photo_data['description'] = description
                 
                 # Clear the container and show the new description with edit button
                 while self.descContainerLayout.count():
@@ -1224,7 +1290,7 @@ class PhotoViewer(QWidget):
             if child.widget():
                 child.widget().deleteLater()
         
-        description = self.photoData.get('description') or ''
+        description = self.photo_data.get('description') or ''
         
         if description:
             # Restore the description label with edit button
@@ -1292,9 +1358,9 @@ class PhotoViewer(QWidget):
     
     def _onToggleFavorite(self):
         """Handle favorite toggle."""
-        photo_id = self.photoData.get('id')
-        file_uuid = self.photoData.get('file_uuid')
-        current_favorite = int(self.photoData.get('favorite', 0))
+        photo_id = self.photo_data.get('id')
+        file_uuid = self.photo_data.get('file_uuid')
+        current_favorite = int(self.photo_data.get('favorite', 0))
         target_state = not bool(current_favorite)
         
         try:
@@ -1310,7 +1376,7 @@ class PhotoViewer(QWidget):
             # Emit signal with updated state
             self.favoriteToggled.emit(photo_id, target_state)
             # Update local state and button label
-            self.photoData['favorite'] = 1 if target_state else 0
+            self.photo_data['favorite'] = 1 if target_state else 0
             if hasattr(self, 'favBtn') and self.favBtn:
                 self.favBtn.setText("Remove from Favorites" if target_state else "Add to Favorites")
         except Exception:
@@ -1318,7 +1384,7 @@ class PhotoViewer(QWidget):
     
     def _onDelete(self):
         """Handle delete button click."""
-        file_path = self.photoData['file_path']
+        file_path = self.photo_data['file_path']
         if not file_path:
             QMessageBox.warning(self, "Delete", "Missing file path for this photo.")
             return
@@ -1330,7 +1396,7 @@ class PhotoViewer(QWidget):
         )
         
         if reply == QMessageBox.StandardButton.Yes:
-            file_uuid = self.photoData.get('file_uuid', '')
+            file_uuid = self.photo_data.get('file_uuid', '')
             ok = self.catalogDb.delete_photo(file_uuid)
             if not ok:
                 QMessageBox.warning(self, "Error", "Failed to delete photo.")
@@ -1339,4 +1405,7 @@ class PhotoViewer(QWidget):
             # Emit signal and close
             self.photoDeleted.emit(file_path)
             self.close()
+
+
+
 

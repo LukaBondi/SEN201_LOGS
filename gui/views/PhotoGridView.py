@@ -95,3 +95,6 @@ class PhotoGridView(QWidget):
             if getattr(card, 'is_selected', False):
                 selected.append(getattr(card, 'file_uuid', None))
         return [u for u in selected if u]
+
+
+

@@ -16,9 +16,9 @@ class AlbumsView(QWidget):
     def __init__(self, albums: list[str], parent=None):
         super().__init__(parent)
         self.albums = albums or []
-        self._setupUI()
+        self._setupUi()
 
-    def _setupUI(self):
+    def _setupUi(self):
         layout = QVBoxLayout(self)
         layout.setSpacing(15)
         # Match the main content padding so titles line up with other views
@@ -92,3 +92,6 @@ class AlbumsView(QWidget):
         createBtn.clicked.connect(lambda: self.createAlbumRequested.emit())
         layout.addWidget(createBtn)
         layout.addStretch()
+
+
+

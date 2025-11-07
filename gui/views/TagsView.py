@@ -14,9 +14,9 @@ class TagsView(QWidget):
     def __init__(self, tags: list[str] | None = None, parent=None):
         super().__init__(parent)
         self._tags = tags or []
-        self._buildUI()
+        self._buildUi()
 
-    def _buildUI(self):
+    def _buildUi(self):
         from PyQt6.QtCore import Qt
 
         root = QVBoxLayout(self)
@@ -68,3 +68,6 @@ class TagsView(QWidget):
             root.addWidget(tagsContainer)
 
         root.addStretch()
+
+
+

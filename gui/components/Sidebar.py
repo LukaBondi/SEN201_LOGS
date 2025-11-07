@@ -31,9 +31,9 @@ class Sidebar(QFrame):
         """
         super().__init__(parent)
         self.navButtons = {}
-        self._setupUI()
+        self._setupUi()
     
-    def _setupUI(self):
+    def _setupUi(self):
         """Set up the sidebar UI."""
         self.setFixedWidth(180)
         self.setStyleSheet("""
@@ -168,3 +168,6 @@ class Sidebar(QFrame):
                         color: #F8F3D9;
                     }
                 """)
+
+
+

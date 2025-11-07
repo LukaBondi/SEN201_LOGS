@@ -35,9 +35,9 @@ from gui.views.TagsView import TagsView
 from gui.views.AlbumsView import AlbumsView
 from gui.dialogs.ImportDialog import ImportDialog
 
-def scanDirectory(dirPath):
+def scanDirectory(dir_path):
     """Return list of Path objects for supported image files in dir (non-recursive)."""
-    p = Path(dirPath)
+    p = Path(dir_path)
     supported = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp', '.heic'}
     files = []
     for ext in supported:
@@ -56,23 +56,41 @@ class MainWindow(QMainWindow):
         self.dbPath = os.path.join("data", "catalog.db")
         self._ensureDataDirectory()
         self._initializeModules()
-        self._initializeUI()
+        self._initializeUi()
 
     def _ensureDataDirectory(self):
-        """Create data directory if it doesn't exist."""
+        """
+        Create data directory if it doesn't exist.
+        
+        Ensures the parent directory for the database file is created
+        before attempting to initialize the database.
+        """
         dataDir = os.path.dirname(self.dbPath)
         if not os.path.exists(dataDir):
             os.makedirs(dataDir)
 
     def _initializeModules(self):
-        """Initialize required backend modules (simplified)."""
+        """
+        Initialize required backend modules.
+        
+        Creates instances of CatalogDatabase and PhotoImporter
+        for managing photo data and imports.
+        """
         self.catalogDb = CatalogDatabase(self.dbPath)
         self.photoImporter = PhotoImporter(self.catalogDb)
         # Remove legacy attributes for clarity
         # self.dbManager, self.searchEngine, self.similaritySearch are deprecated.
 
-    def _initializeUI(self):
-        """Set up the user interface."""
+    def _initializeUi(self):
+        """
+        Set up the user interface.
+        
+        Creates and configures the main window layout, including:
+        - Window title and geometry
+        - Sidebar navigation
+        - Main content area with top bar
+        - Initial view display
+        """
         self.setWindowTitle("Photo Catalog - LOGS Project")
         self.setGeometry(100, 100, 1200, 800)
         
@@ -99,12 +117,24 @@ class MainWindow(QMainWindow):
         self._showAllPhotos()
 
     def _createSidebar(self):
-        """Create the left sidebar with navigation."""
+        """
+        Create the left sidebar with navigation.
+        
+        Initializes the Sidebar component and connects its viewChanged
+        signal to the _switchView method for navigation handling.
+        """
         self.sidebar = Sidebar(self)
         self.sidebar.viewChanged.connect(self._switchView)
 
     def _createMainContent(self):
-        """Create the main content area."""
+        """
+        Create the main content area.
+        
+        Sets up the main content widget including:
+        - Top bar with search, filters, and action buttons
+        - Scrollable content area for displaying views
+        - Upload and tag creation buttons
+        """
         self.mainContent = QWidget()
         mainContentLayout = QVBoxLayout(self.mainContent)
         mainContentLayout.setContentsMargins(0, 0, 0, 0)
@@ -284,6 +314,12 @@ class MainWindow(QMainWindow):
         pass
 
     def _onNameSearch(self, text):
+        """
+        Handle live search by photo name.
+        
+        Args:
+            text (str): Search query text from the search input.
+        """
         # Live search by name
         if not text.strip():
             self._showAllPhotos()
@@ -303,6 +339,12 @@ class MainWindow(QMainWindow):
             self.contentLayout.addWidget(errorLabel)
 
     def _onExplicitSearch(self):
+        """
+        Handle explicit search button click.
+        
+        Performs search based on name and/or selected tags,
+        then displays results using _showSearchResults.
+        """
         # Explicit search button click
         name = self.searchInput.text().strip()
         
@@ -361,6 +403,12 @@ class MainWindow(QMainWindow):
             self.contentLayout.addWidget(errorLabel)
 
     def _showSearchResults(self, photos):
+        """
+        Display search results in a grid view.
+        
+        Args:
+            photos (list): List of photo dictionaries or tuples matching search criteria.
+        """
         # Clear current content area before showing search results only
         while self.contentLayout.count():
             item = self.contentLayout.takeAt(0)
@@ -416,8 +464,14 @@ class MainWindow(QMainWindow):
     def _normalizePhotosForGrid(self, photos):
         """
         Normalize different photo tuple/dict shapes into a format
-        compatible with PhotoCard (either full tuple with file_path at [2]
-        or dict with keys: name, file_path, tags, file_uuid).
+        compatible with PhotoCard.
+
+        Args:
+            photos (list): List of photo data in various formats.
+            
+        Returns:
+            list: Normalized list of photo dictionaries with keys:
+                file_uuid, name, file_path, tags.
 
         Supported inputs:
         - SearchEngine: (id, name, tags, file_path)
@@ -463,7 +517,13 @@ class MainWindow(QMainWindow):
         return normalized
 
     def _showTagsFilterPopup(self):
-        """Show a dropdown menu with tag search and checkboxes for filtering."""
+        """
+        Show a dropdown menu with tag search and checkboxes for filtering.
+        
+        Creates a popup widget with searchable tag checkboxes. Users can filter
+        tags via the search input and select multiple tags. Changes update
+        self.selectedTags and trigger _performTagSearch().
+        """
         # Create a custom widget for the menu
         menuWidget = QWidget()
         menuWidget.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
@@ -679,7 +739,13 @@ class MainWindow(QMainWindow):
         tagSearchInput.setFocus()
 
     def _performTagSearch(self):
-        """Perform search with selected tags."""
+        """
+        Perform search with selected tags.
+        
+        Searches for photos that have ALL selected tags (AND logic).
+        Shows all photos if no tags are selected. Results are displayed
+        in the main content area with album badges.
+        """
         if not self.selectedTags:
             self._showAllPhotos()
             return
@@ -700,7 +766,13 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", f"Failed to search by tags:\n{str(e)}")
 
     def _switchView(self, viewName):
-        """Switch between different views."""
+        """
+        Switch between different views.
+        
+        Args:
+            viewName (str): Name of the view to switch to.
+                Options: "all_photos", "albums", "favorites", "tags"
+        """
         self.currentView = viewName
         
         # Update sidebar button styles
@@ -746,7 +818,13 @@ class MainWindow(QMainWindow):
             self._showTagsView()
 
     def _showAllPhotos(self):
-        """Display all photos in grid view using PhotoGridView."""
+        """
+        Display all photos in grid view using PhotoGridView.
+        
+        Fetches all photos from the database and displays them in a grid.
+        Includes a header with title and "Delete Photos" button. Each photo
+        is annotated with its album memberships for badge display.
+        """
         # Title and delete button row
         headerRow = QWidget()
         headerLayout = QHBoxLayout(headerRow)
@@ -854,7 +932,12 @@ class MainWindow(QMainWindow):
             self._showPhotoViewer(photo)
 
     def _showPhotoViewer(self, photo):
-        """Show photo viewer overlay."""
+        """
+        Show photo viewer overlay.
+        
+        Args:
+            photo (dict): Photo data dictionary containing metadata and file path.
+        """
         # Remove any existing overlay
         if hasattr(self, 'viewerOverlay') and self.viewerOverlay:
             self.viewerOverlay.setParent(None)
@@ -873,16 +956,21 @@ class MainWindow(QMainWindow):
         self.viewerOverlay.show()
         self.viewerOverlay.raise_()
 
-    def _showImportDialog(self, filePath: str):
-        """Show the ImportDialog for a single file and handle result."""
+    def _showImportDialog(self, file_path: str):
+        """
+        Show the ImportDialog for a single file and handle result.
+        
+        Args:
+            file_path (str): Absolute path to the photo file to import.
+        """
         try:
-            dlg = ImportDialog(self, filePath, [a.get('name') for a in self.catalogDb.get_all_albums()])
+            dlg = ImportDialog(self, file_path, [a.get('name') for a in self.catalogDb.get_all_albums()])
             result = dlg.exec()
             if result == QDialog.DialogCode.Accepted:
                 album = dlg.selectedAlbum()
                 tags = dlg.tags()
                 description = dlg.description()
-                status = self.photoImporter.import_photo(Path(filePath), album=album, tags=tags, description=description)
+                status = self.photoImporter.import_photo(Path(file_path), album=album, tags=tags, description=description)
                 if status == self.photoImporter.SUCCESS:
                     QMessageBox.information(self, "Imported", "Photo imported successfully.")
                     # Always return to all photos view after successful import
@@ -893,13 +981,24 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", f"Failed to import photo:\n{str(e)}")
 
     def _onViewerClosed(self):
-        """Handle viewer close."""
+        """
+        Handle viewer close.
+        
+        Removes the viewer overlay from the main window and cleans up
+        the reference. Called when user closes the photo viewer.
+        """
         if hasattr(self, 'viewerOverlay') and self.viewerOverlay:
             self.viewerOverlay.setParent(None)
             self.viewerOverlay = None
 
     def _onViewerFavoriteToggled(self, photo_id, new_state):
-        """Handle favorite toggle from viewer."""
+        """
+        Handle favorite toggle from viewer.
+        
+        Args:
+            photo_id: Photo identifier.
+            new_state (bool): New favorite state (True if favorited).
+        """
         # If we're on Favorites view and item was unfavorited, refresh view
         if getattr(self, 'currentView', None) == "favorites" and not new_state:
             self._onViewerClosed()
@@ -912,12 +1011,24 @@ class MainWindow(QMainWindow):
                 self._showPhotoViewer(photo_data)
 
     def _onViewerPhotoDeleted(self, file_path):
-        """Handle photo deletion from viewer."""
+        """
+        Handle photo deletion from viewer.
+        
+        Args:
+            file_path (str): Path to the deleted photo file.
+        """
         self._onViewerClosed()
         self._refreshAfterDataChange()
 
     def _onViewerTagAdded(self, photo_id, file_path, new_tags):
-        """Handle tag addition from viewer."""
+        """
+        Handle tag addition from viewer.
+        
+        Args:
+            photo_id: Photo identifier.
+            file_path (str): Path to the photo file.
+            new_tags (str): Comma-separated string of tag names.
+        """
         # Fetch fresh photo data from database and refresh viewer
         if hasattr(self, 'viewerOverlay') and self.viewerOverlay:
             file_uuid = self.viewerOverlay.photoData.get('file_uuid')
@@ -943,31 +1054,41 @@ class MainWindow(QMainWindow):
                 self._showPhotoViewer(photo_data)
 
     def _uploadSingleFile(self):
-        """Handle upload single file button click."""
-        filePath, _ = QFileDialog.getOpenFileName(
+        """
+        Handle upload single file button click.
+        
+        Opens file dialog for user to select a photo file,
+        then shows import dialog for metadata entry.
+        """
+        file_path, _ = QFileDialog.getOpenFileName(
             self,
             "Select Photo",
             "",
             "Images (*.png *.jpg *.jpeg *.gif *.bmp *.tiff *.webp *.heic)"
         )
         
-        if filePath:
+        if file_path:
             # Show import dialog
-            self._showImportDialog(filePath)
+            self._showImportDialog(file_path)
 
     def _uploadFolder(self):
-        """Handle upload folder button click."""
-        dirPath = QFileDialog.getExistingDirectory(
+        """
+        Handle upload folder button click.
+        
+        Opens directory dialog, prompts for album name and description,
+        then imports all supported image files from the folder recursively.
+        """
+        dir_path = QFileDialog.getExistingDirectory(
             self,
             "Select Directory"
         )
         
-        if not dirPath:
+        if not dir_path:
             return
         
         # Check if folder has any supported image files before proceeding
         has_images = False
-        for file_path in Path(dirPath).rglob('*'):
+        for file_path in Path(dir_path).rglob('*'):
             if file_path.is_file() and self.photoImporter._is_supported_format(file_path):
                 has_images = True
                 break
@@ -982,7 +1103,7 @@ class MainWindow(QMainWindow):
             return
         
         # Get default album name from folder name
-        default_album_name = os.path.basename(dirPath)
+        default_album_name = os.path.basename(dir_path)
         
         # Create custom dialog for album name and description
         dialog = QDialog(self)
@@ -1083,7 +1204,7 @@ class MainWindow(QMainWindow):
         # Import folder using PhotoImporter
         try:
             imported_uuids = self.photoImporter.import_folder(
-                Path(dirPath),
+                Path(dir_path),
                 album=album_name,
                 description=description
             )
@@ -1116,7 +1237,12 @@ class MainWindow(QMainWindow):
 
 
     def _showAlbumsView(self):
-        """Display a list of album names using AlbumsView component."""
+        """
+        Display a list of album names using AlbumsView component.
+        
+        Fetches all albums from database and displays them in a list
+        with options to view, edit, or delete each album.
+        """
         try:
             albums = [a.get('name') for a in self.catalogDb.get_all_albums()]
         except Exception:
@@ -1130,7 +1256,12 @@ class MainWindow(QMainWindow):
         self.contentLayout.addWidget(view)
 
     def _onCreateAlbumRequested(self):
-        """Prompt for album name and create it."""
+        """
+        Prompt for album name and create it.
+        
+        Shows an input dialog for the user to enter an album name.
+        Creates the album in the database and refreshes the albums view.
+        """
         name, ok = QInputDialog.getText(self, "Create Album", "Album name:")
         if not ok:
             return
@@ -1217,7 +1348,13 @@ class MainWindow(QMainWindow):
         self.contentLayout.addStretch()
 
     def _addSelectedToAlbum(self, grid: 'PhotoGridView', album: str):
-        """Assign the selected photos in the grid to the given album."""
+        """
+        Assign the selected photos in the grid to the given album.
+        
+        Args:
+            grid (PhotoGridView): The grid view containing selected photos.
+            album (str): Name of the album to add photos to.
+        """
         selected = grid.getSelectedFileUUIDs()
         if not selected:
             QMessageBox.information(self, "No Selection", "Please select one or more photos to add.")
@@ -1234,7 +1371,12 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", f"Failed to assign photos to album:\n{str(e)}")
 
     def _showPhotosInAlbum(self, album):
-        """Display all photos in the selected album."""
+        """
+        Display all photos in the selected album.
+        
+        Args:
+            album (str): Name of the album to display.
+        """
         # Track the current album for refresh after operations
         self.currentAlbumName = album
         # Clear current content
@@ -1332,7 +1474,12 @@ class MainWindow(QMainWindow):
         self.contentLayout.addStretch()
 
     def _beginRemoveFromAlbum(self, album: str):
-        """Start multi-select removal flow for a given album."""
+        """
+        Start multi-select removal flow for a given album.
+        
+        Args:
+            album (str): Name of the album to remove photos from.
+        """
         try:
             photos = self.catalogDb.get_album_photos(album)
             for p in photos:
@@ -1393,6 +1540,13 @@ class MainWindow(QMainWindow):
         self.contentLayout.addStretch()
 
     def _removeSelectedFromAlbum(self, grid: 'PhotoGridView', album: str):
+        """
+        Remove selected photos from an album.
+        
+        Args:
+            grid (PhotoGridView): The grid view containing selected photos.
+            album (str): Name of the album to remove photos from.
+        """
         uuids = grid.getSelectedFileUUIDs()
         if not uuids:
             QMessageBox.information(self, "No Selection", "Select photos to remove.")
@@ -1408,7 +1562,13 @@ class MainWindow(QMainWindow):
         self._showPhotosInAlbum(album)
 
     def _beginDeleteFromAllPhotos(self):
-        """Start multi-select deletion flow for all photos."""
+        """
+        Start multi-select deletion flow from all photos view.
+        
+        Switches to selection mode allowing user to select multiple photos
+        for deletion from the catalog. Provides "Delete Selected" and
+        "Cancel" buttons.
+        """
         try:
             photos = self.catalogDb.get_all_photos()
             for p in photos:
@@ -1489,7 +1649,12 @@ class MainWindow(QMainWindow):
         self.contentLayout.addStretch()
 
     def _deleteSelectedPhotos(self, grid: 'PhotoGridView'):
-        """Delete selected photos from the catalog."""
+        """
+        Delete selected photos from the catalog.
+        
+        Args:
+            grid (PhotoGridView): The grid view containing selected photos.
+        """
         uuids = grid.getSelectedFileUUIDs()
         if not uuids:
             QMessageBox.information(self, "No Selection", "Please select photos to delete.")
@@ -1544,7 +1709,12 @@ class MainWindow(QMainWindow):
                                    f"Failed to delete album:\n{str(e)}")
 
     def _refreshAfterDataChange(self):
-        """Refresh the current view after data changes (delete/favorite/tag)."""
+        """
+        Refresh the current view after data changes.
+        
+        Called after operations like delete, favorite toggle, or tag changes
+        to ensure the display reflects the current database state.
+        """
         try:
             if self.currentView == "all_photos":
                 self._switchView("all_photos")
@@ -1563,7 +1733,12 @@ class MainWindow(QMainWindow):
             self._switchView("all_photos")
 
     def _showFavoritesView(self):
-        """Display all photos marked as favorites using PhotoGridView."""
+        """
+        Display all photos marked as favorites using PhotoGridView.
+        
+        Fetches photos with favorite flag set to 1 and displays them in a
+        grid layout. Each photo is annotated with album memberships.
+        """
         titleLabel = QLabel("Favorites")
         titleLabel.setStyleSheet("font-size: 14pt; font-weight: 600; color: #504B38; margin-bottom: 20px;")
         self.contentLayout.addWidget(titleLabel)
@@ -1584,7 +1759,12 @@ class MainWindow(QMainWindow):
         self.contentLayout.addStretch()
 
     def _showTagsView(self):
-        """Display list of tags using TagsView and wire actions for tag clicks."""
+        """
+        Display list of tags using TagsView and wire actions for tag clicks.
+        
+        Fetches all tags from the database and displays them in a grid view.
+        Clicking a tag opens an edit/delete dialog.
+        """
         # Fetch tags from DB
         try:
             tags_data = self.catalogDb.get_all_tags()
@@ -1684,7 +1864,12 @@ class MainWindow(QMainWindow):
         view.tagClicked.connect(onTagClicked)
 
     def _onCreateTagFromTopBar(self):
-        """Handle create tag button click from top bar."""
+        """
+        Handle create tag button click from top bar.
+        
+        Shows an input dialog for the user to enter a new tag name.
+        Creates the tag in the database if it doesn't already exist.
+        """
         text, ok = QInputDialog.getText(self, "Create Tag", "Tag name:")
         if ok:
             tag = text.strip()
@@ -1706,7 +1891,14 @@ class MainWindow(QMainWindow):
                     QMessageBox.critical(self, "Error", f"Failed to create tag:\n{str(e)}")
 
     def _saveTagFromDialog(self, dialog, old_name: str, new_name: str):
-        """Save tag name change."""
+        """
+        Save tag name change.
+        
+        Args:
+            dialog: The dialog widget to close on success.
+            old_name (str): Original tag name.
+            new_name (str): New tag name.
+        """
         if not new_name:
             QMessageBox.warning(self, "Empty Name", "Tag name cannot be empty.")
             return
@@ -1751,7 +1943,13 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", f"Failed to update tag:\n{str(e)}")
 
     def _deleteTagFromDialog(self, dialog, tag_name: str):
-        """Delete tag from dialog."""
+        """
+        Delete tag from dialog after confirmation.
+        
+        Args:
+            dialog: The dialog widget to close on success.
+            tag_name (str): Name of the tag to delete.
+        """
         reply = QMessageBox.question(
             self,
             "Confirm Deletion",
@@ -1771,7 +1969,12 @@ class MainWindow(QMainWindow):
 
     # --- Interactive bulk import helpers ---
     def _startInteractiveBulkImport(self, files: list[str]):
-        """Initialize state for non-blocking interactive bulk import."""
+        """
+        Initialize state for non-blocking interactive bulk import.
+        
+        Args:
+            files (list[str]): List of file paths to import interactively.
+        """
         if not files:
             QMessageBox.information(self, "Import", "No files to import.")
             return
@@ -1788,7 +1991,12 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(0, self._processNextInteractiveImport)
 
     def _processNextInteractiveImport(self):
-        """Process the next file in the interactive import queue."""
+        """
+        Process the next file in the interactive import queue.
+        
+        Displays ImportDialog for the next file in the queue. Updates progress
+        dialog. Automatically continues to the next file after each import.
+        """
         if not getattr(self, '_bulk_queue', None):
             # Finished
             try:
@@ -1807,13 +2015,13 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Import Cancelled", f"Imported: {self._bulk_imported} photo(s)\nSkipped: {self._bulk_skipped}")
             return
 
-        filePath = self._bulk_queue.pop(0)
+        file_path = self._bulk_queue.pop(0)
         currentIndex = self._bulk_imported + self._bulk_skipped + 1
-        self._bulk_progress.setLabelText(f"Importing {currentIndex} of {self._bulk_total}: {os.path.basename(filePath)}")
+        self._bulk_progress.setLabelText(f"Importing {currentIndex} of {self._bulk_total}: {os.path.basename(file_path)}")
         self._bulk_progress.setValue(currentIndex - 1)
 
         # Show ImportDialog non-blocking: we show it and connect to its finished signal
-        dialog = ImportDialog(self, filePath, [a.get('name') for a in self.catalogDb.get_all_albums()])
+        dialog = ImportDialog(self, file_path, [a.get('name') for a in self.catalogDb.get_all_albums()])
         # When dialog is finished, handle result
         def on_finished(result):
             try:
@@ -1822,7 +2030,7 @@ class MainWindow(QMainWindow):
                     tags = dialog.tags()
                     description = dialog.description()
                     try:
-                        status = self.photoImporter.import_photo(Path(filePath), album=album, tags=tags, description=description)
+                        status = self.photoImporter.import_photo(Path(file_path), album=album, tags=tags, description=description)
                         if status == self.photoImporter.SUCCESS:
                             self._bulk_imported += 1
                         else:
@@ -1845,12 +2053,22 @@ class MainWindow(QMainWindow):
         dialog.show()
 
     def _onSearchChanged(self, text):
-        """Handle search input changes."""
+        """
+        Handle search input changes.
+        
+        Args:
+            text (str): Current search text.
+        """
         # TODO: Implement live search filtering
         pass
 
     def _loadUploadAlbums(self):
-        """Load albums into upload dropdown."""
+        """
+        Load albums into upload dropdown.
+        
+        Fetches all albums from database and populates the upload view's
+        album dropdown (keeping "No Album" and "Create New Album" options).
+        """
         try:
             albums = [a.get('name') for a in self.catalogDb.get_all_albums()]
             while self.uploadAlbumCombo.count() > 2:
@@ -1861,15 +2079,25 @@ class MainWindow(QMainWindow):
             print(f"Error loading albums: {e}")
 
     def _onUploadAlbumChanged(self, text):
-        """Handle album selection change in upload view."""
+        """
+        Handle album selection change in upload view.
+        
+        Args:
+            text (str): Selected album text from combo box.
+        """
         if text == "-- Create New Album --":
             self.uploadNewAlbumInput.setVisible(True)
         else:
             self.uploadNewAlbumInput.setVisible(False)
 
     def _importSinglePhotoFromUpload(self):
-        """Import photo from upload view."""
-        filePath = self.uploadFileInput.text().strip()
+        """
+        Import photo from upload view.
+        
+        Validates the form inputs (file path, album, tags, description) and
+        imports the photo using PhotoImporter. Creates new album if needed.
+        """
+        file_path = self.uploadFileInput.text().strip()
         albumSelection = self.uploadAlbumCombo.currentText()
         
         if albumSelection == "-- No Album --":
@@ -1885,18 +2113,18 @@ class MainWindow(QMainWindow):
         tagsText = self.uploadTagsInput.text().strip()
         description = self.uploadDescInput.text().strip()
         
-        if not filePath:
+        if not file_path:
             QMessageBox.warning(self, "Missing Information", "Please select a photo file.")
             return
         
-        if not os.path.exists(filePath):
-            QMessageBox.critical(self, "File Not Found", f"The file does not exist:\n{filePath}")
+        if not os.path.exists(file_path):
+            QMessageBox.critical(self, "File Not Found", f"The file does not exist:\n{file_path}")
             return
         
         tags = [tag.strip() for tag in tagsText.split(",") if tag.strip()]
         
         try:
-            status = self.photoImporter.import_photo(Path(filePath), album=album, tags=tags, description=description)
+            status = self.photoImporter.import_photo(Path(file_path), album=album, tags=tags, description=description)
             if status == self.photoImporter.SUCCESS:
                 QMessageBox.information(self, "Success", "Photo imported successfully!")
                 self.uploadFileInput.clear()
@@ -1914,7 +2142,13 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", f"Failed to import photo:\n{str(e)}")
 
     def _createImportTab(self):
-        """Create the import photos tab."""
+        """
+        Create the import photos tab.
+        
+        Sets up the import interface with file/folder selection, album
+        assignment, tags, and description fields. Provides both single file
+        and bulk directory import options.
+        """
         importWidget = QWidget()
         layout = QVBoxLayout(importWidget)
 
@@ -2004,7 +2238,12 @@ class MainWindow(QMainWindow):
         self.tabWidget.addTab(importWidget, "Import")
 
     def _createSearchTab(self):
-        """Create the search photos tab."""
+        """
+        Create the search photos tab.
+        
+        Sets up search interface with name and tags search inputs. Displays
+        search results in a list widget with photo details.
+        """
         searchWidget = QWidget()
         layout = QVBoxLayout(searchWidget)
 
@@ -2049,7 +2288,12 @@ class MainWindow(QMainWindow):
         self.tabWidget.addTab(searchWidget, "Search")
 
     def _createBrowseTab(self):
-        """Create the browse all photos tab."""
+        """
+        Create the browse all photos tab.
+        
+        Sets up browse interface with photo list and details panel. Provides
+        refresh button to reload photo list from database.
+        """
         browseWidget = QWidget()
         layout = QVBoxLayout(browseWidget)
 
@@ -2088,7 +2332,13 @@ class MainWindow(QMainWindow):
         self._refreshPhotoList()
 
     def _createAlbumsTab(self):
-        """Create the albums management tab."""
+        """
+        Create the albums management tab.
+        
+        Sets up album management interface with album list, photo grid for
+        selected album, and create album button. Displays album photos when
+        an album is clicked.
+        """
         albumsWidget = QWidget()
         layout = QVBoxLayout(albumsWidget)
 
@@ -2194,27 +2444,27 @@ class MainWindow(QMainWindow):
 
     def _browseSingleFile(self):
         """Open file dialog to select a single photo."""
-        filePath, _ = QFileDialog.getOpenFileName(
+        file_path, _ = QFileDialog.getOpenFileName(
             self,
             "Select Photo",
             "",
             "Images (*.png *.jpg *.jpeg *.gif *.bmp *.tiff *.webp *.heic)"
         )
-        if filePath:
-            self.filePathInput.setText(filePath)
+        if file_path:
+            self.filePathInput.setText(file_path)
 
     def _browseDirectory(self):
         """Open directory dialog to select a folder."""
-        dirPath = QFileDialog.getExistingDirectory(
+        dir_path = QFileDialog.getExistingDirectory(
             self,
             "Select Directory"
         )
-        if dirPath:
-            self.dirPathInput.setText(dirPath)
+        if dir_path:
+            self.dirPathInput.setText(dir_path)
 
     def _importSinglePhoto(self):
         """Import a single photo with metadata."""
-        filePath = self.filePathInput.text().strip()
+        file_path = self.filePathInput.text().strip()
         albumSelection = self.albumComboBox.currentText()
 
         # Determine album name
@@ -2232,21 +2482,21 @@ class MainWindow(QMainWindow):
         tagsText = self.tagsInput.text().strip()
         description = self.descInput.text().strip()
 
-        if not filePath:
+        if not file_path:
             QMessageBox.warning(self, "Missing Information",
                               "Please select a photo file.")
             return
 
-        if not os.path.exists(filePath):
+        if not os.path.exists(file_path):
             QMessageBox.critical(self, "File Not Found",
-                               f"The file does not exist:\n{filePath}")
+                               f"The file does not exist:\n{file_path}")
             return
 
         # Process tags
         tags = [tag.strip() for tag in tagsText.split(",") if tag.strip()]
 
         try:
-            status = self.photoImporter.import_photo(Path(filePath), album=album, tags=tags, description=description)
+            status = self.photoImporter.import_photo(Path(file_path), album=album, tags=tags, description=description)
             if status == self.photoImporter.SUCCESS:
                 QMessageBox.information(self, "Success",
                                       "Photo imported successfully!")
@@ -2272,21 +2522,21 @@ class MainWindow(QMainWindow):
 
     def _scanAndImport(self):
         """Scan a directory and import all found photos."""
-        dirPath = self.dirPathInput.text().strip()
+        dir_path = self.dirPathInput.text().strip()
 
-        if not dirPath:
+        if not dir_path:
             QMessageBox.warning(self, "Missing Information",
                               "Please select a directory.")
             return
 
-        if not os.path.exists(dirPath):
+        if not os.path.exists(dir_path):
             QMessageBox.critical(self, "Directory Not Found",
-                               f"The directory does not exist:\n{dirPath}")
+                               f"The directory does not exist:\n{dir_path}")
             return
 
         try:
             # Scan directory
-            foundFiles = scanDirectory(dirPath)
+            foundFiles = scanDirectory(dir_path)
             self.scanResultText.clear()
             self.scanResultText.append(f"Found {len(foundFiles)} photo(s).\n")
 
@@ -2297,21 +2547,21 @@ class MainWindow(QMainWindow):
             # Import each file
             imported = 0
             skipped = 0
-            for filePath in foundFiles:
+            for file_path in foundFiles:
                 try:
-                    status = self.photoImporter.import_photo(Path(filePath), album="", tags=[], description="")
+                    status = self.photoImporter.import_photo(Path(file_path), album="", tags=[], description="")
                     if status == self.photoImporter.SUCCESS:
                         imported += 1
-                        self.scanResultText.append(f"✓ Imported: {os.path.basename(filePath)}")
+                        self.scanResultText.append(f"✓ Imported: {os.path.basename(file_path)}")
                     elif status == self.photoImporter.DUPLICATE:
                         skipped += 1
-                        self.scanResultText.append(f"⊗ Skipped (duplicate): {os.path.basename(filePath)}")
+                        self.scanResultText.append(f"⊗ Skipped (duplicate): {os.path.basename(file_path)}")
                     else:
                         skipped += 1
-                        self.scanResultText.append(f"⊗ Skipped (error/unsupported): {os.path.basename(filePath)}")
+                        self.scanResultText.append(f"⊗ Skipped (error/unsupported): {os.path.basename(file_path)}")
                 except Exception:
                     skipped += 1
-                    self.scanResultText.append(f"⊗ Skipped (exception): {os.path.basename(filePath)}")
+                    self.scanResultText.append(f"⊗ Skipped (exception): {os.path.basename(file_path)}")
 
             self.scanResultText.append(f"\n--- Summary ---")
             self.scanResultText.append(f"Imported: {imported}")
@@ -2342,7 +2592,7 @@ class MainWindow(QMainWindow):
                 self.searchResultsList.addItem("No photos found.")
                 return
 
-            for photoId, photoName, photoTags, filePath in results:
+            for photo_id, photoName, photoTags, file_path in results:
                 displayText = f"{photoName} (Tags: {photoTags or 'None'})"
                 self.searchResultsList.addItem(displayText)
 
@@ -2502,10 +2752,10 @@ class MainWindow(QMainWindow):
             return
 
         # Extract album name (before the parenthesis)
-        albumName = albumText.split(" (")[0]
+        album_name = albumText.split(" (")[0]
 
         try:
-            photos = self.catalogDb.get_album_photos(albumName)
+            photos = self.catalogDb.get_album_photos(album_name)
             self.albumPhotosList.clear()
 
             if not photos:
@@ -2572,22 +2822,22 @@ class MainWindow(QMainWindow):
         if albumText == "No albums created.":
             return
 
-        albumName = albumText.split(" (")[0]
+        album_name = albumText.split(" (")[0]
         
         reply = QMessageBox.question(
             self,
             "Confirm Album Deletion",
-            f"Are you sure you want to delete the album '{albumName}'?\n\n"
+            f"Are you sure you want to delete the album '{album_name}'?\n\n"
             "Note: This will only delete the album. All photos will remain in the catalog.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
         
         if reply == QMessageBox.StandardButton.Yes:
             try:
-                success = self.catalogDb.delete_album(albumName)
+                success = self.catalogDb.delete_album(album_name)
                 if success:
                     QMessageBox.information(self, "Success",
-                                          f"Album '{albumName}' deleted successfully!")
+                                          f"Album '{album_name}' deleted successfully!")
                     self._refreshAlbumsList()
                     self._loadAlbums()
                 else:
@@ -2621,5 +2871,8 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 QMessageBox.critical(self, "Error",
                                    f"Failed to delete album:\n{str(e)}")
+
+
+
 
 
