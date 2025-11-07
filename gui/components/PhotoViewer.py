@@ -599,7 +599,7 @@ class PhotoViewer(QWidget):
         self.descContainerLayout.setContentsMargins(0, 0, 0, 0)
         self.descContainerLayout.setSpacing(5)
         
-        description = self.photoData.get('description', '')
+        description = self.photoData.get('description') or ''
         
         if description:
             # Show existing description with edit button
@@ -657,7 +657,7 @@ class PhotoViewer(QWidget):
                     border-color: #B9B28A;
                 }
             """)
-            self.addDescBtn.clicked.connect(self._onAddDescriptionClicked)
+            self.addDescBtn.clicked.connect(lambda: self._onAddDescriptionClicked())
             self.descContainerLayout.addWidget(self.addDescBtn)
         
         layout.addWidget(self.descContainer)
@@ -1053,13 +1053,17 @@ class PhotoViewer(QWidget):
     
     def _onEditDescriptionClicked(self):
         """Handle 'Edit' button click for existing description."""
-        existing_description = self.photoData.get('description', '')
+        existing_description = self.photoData.get('description') or ''
         self._onAddDescriptionClicked(existing_description)
     
     def _onAddDescriptionClicked(self, existing_text=''):
         """Handle 'Add Description' button click - show inline edit field."""
-        # Store original description for comparison
-        self.originalDescription = self.photoData.get('description', '')
+        # Store original description for comparison (handle None values)
+        self.originalDescription = self.photoData.get('description') or ''
+        
+        # Ensure existing_text is never None
+        if existing_text is None:
+            existing_text = ''
         
         # Clear the container
         while self.descContainerLayout.count():
@@ -1220,7 +1224,7 @@ class PhotoViewer(QWidget):
             if child.widget():
                 child.widget().deleteLater()
         
-        description = self.photoData.get('description', '')
+        description = self.photoData.get('description') or ''
         
         if description:
             # Restore the description label with edit button
@@ -1278,7 +1282,7 @@ class PhotoViewer(QWidget):
                     border-color: #B9B28A;
                 }
             """)
-            self.addDescBtn.clicked.connect(self._onAddDescriptionClicked)
+            self.addDescBtn.clicked.connect(lambda: self._onAddDescriptionClicked())
             self.descContainerLayout.addWidget(self.addDescBtn)
     
     def _onClose(self):
