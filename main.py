@@ -10,6 +10,7 @@ Purpose:
 
 import sys
 from PyQt6.QtWidgets import QApplication
+from PyQt6.QtGui import QIcon
 from gui.MainWindow import MainWindow
 
 
@@ -20,7 +21,9 @@ def main():
     # Set application metadata
     app.setApplicationName("Photo Catalog")
     app.setOrganizationName("LOGS Team")
-    app.setApplicationVersion("1.0.0")
+    app.setApplicationVersion("1.0.1")
+    app.setWindowIcon(QIcon("assets/icon.png"))
+
 
     # Create and show main window
     window = MainWindow()
