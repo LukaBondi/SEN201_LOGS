@@ -12,7 +12,7 @@ else:
     app_icon = None  # Fallback if on other OS
 
 # --- Collect all assets (icons, images, etc.) ---
-datas = collect_data_files('assets', includes=['*'])
+datas = [(os.path.abspath("assets"), "assets")]
 
 a = Analysis(
     ['main.py'],
