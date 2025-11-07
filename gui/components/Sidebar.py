@@ -1,6 +1,6 @@
 """
 Sidebar.py
-Author: Satwik
+Author: Luka Bond
 Date: October 25, 2025
 
 Purpose:

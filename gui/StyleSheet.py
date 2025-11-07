@@ -1,6 +1,6 @@
 """
 StyleSheet.py
-Author: Satwik
+Author: Satwik Singh
 Date: October 25, 2025
 
 Purpose:
