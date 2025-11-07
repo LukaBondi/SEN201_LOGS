@@ -71,6 +71,9 @@ class PhotoGridView(QWidget):
         self._select_mode = enable
         for card in getattr(self, '_cards', []):
             card.is_selectable = enable
+            # Hide or show delete button based on selection mode
+            if hasattr(card, 'deleteBtn'):
+                card.deleteBtn.setVisible(not enable)
             if not enable:
                 # clear selection visual
                 if card.is_selected:
@@ -84,3 +87,11 @@ class PhotoGridView(QWidget):
             if getattr(card, 'is_selected', False):
                 selected.append(getattr(card, 'file_path', None))
         return [p for p in selected if p]
+
+    def getSelectedFileUUIDs(self) -> list:
+        """Return file UUIDs for currently selected cards."""
+        selected = []
+        for card in getattr(self, '_cards', []):
+            if getattr(card, 'is_selected', False):
+                selected.append(getattr(card, 'file_uuid', None))
+        return [u for u in selected if u]

@@ -38,7 +38,7 @@ class Sidebar(QFrame):
         self.setFixedWidth(180)
         self.setStyleSheet("""
             QFrame {
-                background-color: #2d2d2d;
+                background-color: #245473;
                 border-right: 1px solid #504B38;
             }
         """)
@@ -49,7 +49,7 @@ class Sidebar(QFrame):
         
         # Logo/Header
         logoWidget = QWidget()
-        logoWidget.setStyleSheet("background-color: #2d2d2d; padding: 20px;")
+        logoWidget.setStyleSheet("background-color: #245473; padding: 20px;")
         logoLayout = QVBoxLayout(logoWidget)
         
         logoLabel = QLabel("LOGS")
@@ -72,7 +72,6 @@ class Sidebar(QFrame):
         
         # Navigation buttons
         self.navButtons['all_photos'] = self._createNavButton("📷 ALL PHOTOS", True)
-        self.navButtons['upload'] = self._createNavButton("⬆️ UPLOAD", False)
         self.navButtons['albums'] = self._createNavButton("📁 ALBUMS", False)
         self.navButtons['favorites'] = self._createNavButton("⭐ FAVORITES", False)
         self.navButtons['tags'] = self._createNavButton("🏷️ TAGS", False)
@@ -115,7 +114,7 @@ class Sidebar(QFrame):
         else:
             btn.setStyleSheet("""
                 QPushButton {
-                    background-color: #2d2d2d;
+                    background-color: #245473;
                     color: #B9B28A;
                     border: none;
                     text-align: left;
@@ -124,7 +123,7 @@ class Sidebar(QFrame):
                     font-weight: 500;
                 }
                 QPushButton:hover {
-                    background-color: #3d3d3d;
+                    background-color: #326589;
                     color: #F8F3D9;
                 }
             """)
@@ -156,7 +155,7 @@ class Sidebar(QFrame):
             else:
                 btn.setStyleSheet("""
                     QPushButton {
-                        background-color: #2d2d2d;
+                        background-color: #245473;
                         color: #B9B28A;
                         border: none;
                         text-align: left;
@@ -165,7 +164,7 @@ class Sidebar(QFrame):
                         font-weight: 500;
                     }
                     QPushButton:hover {
-                        background-color: #3d3d3d;
+                        background-color: #326589;
                         color: #F8F3D9;
                     }
                 """)

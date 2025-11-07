@@ -12,7 +12,7 @@ import shutil
 import hashlib
 from pathlib import Path
 from typing import Optional, List, Tuple
-from catalog_database import CatalogDatabase
+from src.catalog_database import CatalogDatabase
 
 class PhotoImporter:
     # Import status codes
@@ -72,7 +72,7 @@ class PhotoImporter:
             return self.COPY_ERROR
         
         # Check for duplicates
-        if self.catalog_db.photo_exists(checksum):
+        if self.catalog_db._photo_exists(checksum):
             self.last_error = "Photo already exists in catalog"
             return self.DUPLICATE
         

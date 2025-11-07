@@ -515,7 +515,7 @@ class CatalogDatabase:
             return []
     
     def get_album_photos(self, album_name: str) -> List[Dict]:
-        """Get all photos in an album. Returns empty list on error."""
+        """Get all photos in an album with tags. Returns empty list on error."""
         try:
             cursor = self.conn.cursor()
             cursor.execute("""
@@ -529,6 +529,46 @@ class CatalogDatabase:
             photos = [dict(row) for row in cursor.fetchall()]
             for photo in photos:
                 photo['full_path'] = str(self.get_photo_path(photo['file_uuid']))
+                # Get tags for this photo and join them as comma-separated string
+                tags_list = self.get_photo_tags(photo['file_uuid'])
+                photo['tags'] = ', '.join(tags_list) if tags_list else ''
+            return photos
+        except sqlite3.Error:
+            return []
+
+    def photo_in_album(self, file_uuid: str, album_name: str) -> bool:
+        """Return True if the photo (UUID) is already in the given album."""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                SELECT 1 FROM photo_albums pa
+                JOIN photos p ON pa.photo_id = p.id
+                JOIN albums a ON pa.album_id = a.id
+                WHERE p.file_uuid = ? AND a.name = ?
+            """, (file_uuid, album_name))
+            return cursor.fetchone() is not None
+        except sqlite3.Error:
+            return False
+
+    def get_photos_not_in_album(self, album_name: str) -> List[Dict]:
+        """Get all photos that are NOT already in the specified album with tags."""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                SELECT p.* FROM photos p
+                WHERE p.id NOT IN (
+                    SELECT pa.photo_id FROM photo_albums pa
+                    JOIN albums a ON pa.album_id = a.id
+                    WHERE a.name = ?
+                )
+                ORDER BY p.date_added DESC
+            """, (album_name,))
+            photos = [dict(row) for row in cursor.fetchall()]
+            for photo in photos:
+                photo['full_path'] = str(self.get_photo_path(photo['file_uuid']))
+                # Get tags for this photo and join them as comma-separated string
+                tags_list = self.get_photo_tags(photo['file_uuid'])
+                photo['tags'] = ', '.join(tags_list) if tags_list else ''
             return photos
         except sqlite3.Error:
             return []
@@ -549,8 +589,26 @@ class CatalogDatabase:
             return []
     
     # --- Utility Methods ---
+    def get_photo_by_uuid(self, file_uuid: str) -> Optional[Dict]:
+        """Get a single photo by UUID with full path and tags. Returns None if not found."""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT * FROM photos WHERE file_uuid = ?", (file_uuid,))
+            row = cursor.fetchone()
+            if row:
+                photo = dict(row)
+                photo['full_path'] = str(self.get_photo_path(photo['file_uuid']))
+                photo['file_path'] = photo['full_path']  # Add file_path alias for compatibility
+                # Get tags for this photo and join them as comma-separated string
+                tags_list = self.get_photo_tags(photo['file_uuid'])
+                photo['tags'] = ', '.join(tags_list) if tags_list else ''
+                return photo
+            return None
+        except sqlite3.Error:
+            return None
+
     def get_all_photos(self) -> List[Dict]:
-        """Get all photos with full paths. Returns empty list on error."""
+        """Get all photos with full paths and tags. Returns empty list on error."""
         try:
             cursor = self.conn.cursor()
             cursor.execute("SELECT * FROM photos ORDER BY date_added DESC")
@@ -558,6 +616,39 @@ class CatalogDatabase:
             photos = [dict(row) for row in cursor.fetchall()]
             for photo in photos:
                 photo['full_path'] = str(self.get_photo_path(photo['file_uuid']))
+                # Get tags for this photo and join them as comma-separated string
+                tags_list = self.get_photo_tags(photo['file_uuid'])
+                photo['tags'] = ', '.join(tags_list) if tags_list else ''
+            return photos
+        except sqlite3.Error:
+            return []
+
+    def get_photo_albums(self, file_uuid: str) -> List[str]:
+        """Return list of album names a photo belongs to."""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("""
+                SELECT a.name FROM albums a
+                JOIN photo_albums pa ON a.id = pa.album_id
+                JOIN photos p ON pa.photo_id = p.id
+                WHERE p.file_uuid = ?
+                ORDER BY a.name
+            """, (file_uuid,))
+            return [row['name'] for row in cursor.fetchall()]
+        except sqlite3.Error:
+            return []
+
+    def get_favorite_photos(self) -> List[Dict]:
+        """Get only photos marked as favorites with tags. Returns empty list on error."""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT * FROM photos WHERE favorite = 1 ORDER BY date_added DESC")
+            photos = [dict(row) for row in cursor.fetchall()]
+            for photo in photos:
+                photo['full_path'] = str(self.get_photo_path(photo['file_uuid']))
+                # Get tags for this photo and join them as comma-separated string
+                tags_list = self.get_photo_tags(photo['file_uuid'])
+                photo['tags'] = ', '.join(tags_list) if tags_list else ''
             return photos
         except sqlite3.Error:
             return []

@@ -4,14 +4,14 @@ PhotoViewer Component
 A full-screen overlay component for viewing photo details with metadata,
 tags management, favorites toggle, and delete functionality.
 
-Author: Copilot
+Author: Luka Bond
 Date: 2024
 """
 
 import os
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QFrame, QLineEdit, QGridLayout, QMessageBox
+    QFrame, QLineEdit, QGridLayout, QMessageBox, QTextEdit
 )
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -39,12 +39,12 @@ class PhotoViewer(QWidget):
         
         Args:
             photo: Photo data (dict or tuple)
-            dbManager: Database manager instance
+            dbManager: Database manager instance (CatalogDatabase)
             photoImporter: Photo importer instance
             parent: Parent widget
         """
         super().__init__(parent)
-        self.dbManager = dbManager
+        self.catalogDb = dbManager  # CatalogDatabase instance
         self.photoImporter = photoImporter
         self.photoData = self._normalizePhotoData(photo)
         
@@ -61,9 +61,10 @@ class PhotoViewer(QWidget):
             dict: Normalized photo data
         """
         if isinstance(photo, dict):
-            file_path = photo.get('file_path', '')
+            file_path = photo.get('full_path', photo.get('file_path', ''))
             return {
                 'id': photo.get('id'),
+                'file_uuid': photo.get('file_uuid', ''),
                 'name': photo.get('name', os.path.basename(file_path)),
                 'file_path': file_path,
                 'description': photo.get('description', ''),
@@ -178,30 +179,48 @@ class PhotoViewer(QWidget):
         imageLayout.setContentsMargins(10, 10, 10, 10)
         
         # Image label
-        imageLabel = QLabel()
-        imageLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        imageLabel.setStyleSheet("background-color: #1a1a1a;")
+        self.imageLabel = QLabel()
+        self.imageLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.imageLabel.setStyleSheet("background-color: #1a1a1a;")
+        self.imageLabel.setScaledContents(False)  # Don't stretch, we'll scale manually
         
         file_path = self.photoData['file_path']
         if file_path and isinstance(file_path, str) and os.path.exists(file_path):
-            pixmap = QPixmap(file_path)
-            if not pixmap.isNull():
-                # Scale to fit while maintaining aspect ratio
-                scaled_pixmap = pixmap.scaled(
-                    800, 600,
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation
-                )
-                imageLabel.setPixmap(scaled_pixmap)
+            self.originalPixmap = QPixmap(file_path)
+            if not self.originalPixmap.isNull():
+                # Initial display - will be properly scaled in resizeEvent
+                self._updateImageDisplay()
             else:
-                imageLabel.setText("📷 Cannot load image")
-                imageLabel.setStyleSheet("color: white; font-size: 48pt;")
+                self.imageLabel.setText("📷 Cannot load image")
+                self.imageLabel.setStyleSheet("color: white; font-size: 48pt;")
+                self.originalPixmap = None
         else:
-            imageLabel.setText("❌ Image not found")
-            imageLabel.setStyleSheet("color: white; font-size: 48pt;")
+            self.imageLabel.setText("❌ Image not found")
+            self.imageLabel.setStyleSheet("color: white; font-size: 48pt;")
+            self.originalPixmap = None
         
-        imageLayout.addWidget(imageLabel)
+        imageLayout.addWidget(self.imageLabel)
         return imageContainer
+    
+    def _updateImageDisplay(self):
+        """Update the image display to fit the current container size."""
+        if hasattr(self, 'originalPixmap') and self.originalPixmap and not self.originalPixmap.isNull():
+            # Get the available size (subtract margins and some padding)
+            available_width = self.width() - 500  # Account for info panel and margins
+            available_height = self.height() - 150  # Account for top bar and margins
+            
+            # Scale to fit while maintaining aspect ratio
+            scaled_pixmap = self.originalPixmap.scaled(
+                available_width, available_height,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            )
+            self.imageLabel.setPixmap(scaled_pixmap)
+    
+    def resizeEvent(self, event):
+        """Handle resize events to update image scaling."""
+        super().resizeEvent(event)
+        self._updateImageDisplay()
     
     def _createInfoPanel(self):
         """
@@ -280,14 +299,47 @@ class PhotoViewer(QWidget):
         """)
         layout.addWidget(descLabel)
         
-        descValueLabel = QLabel(self.photoData['description'] or 'A picture of leaves\ntaken in ........')
-        descValueLabel.setStyleSheet("""
-            color: #2d2d2d;
-            font-size: 10pt;
-            margin-bottom: 10px;
-        """)
-        descValueLabel.setWordWrap(True)
-        layout.addWidget(descValueLabel)
+        # Container for description content (either text or edit field)
+        self.descContainer = QWidget()
+        self.descContainerLayout = QVBoxLayout(self.descContainer)
+        self.descContainerLayout.setContentsMargins(0, 0, 0, 0)
+        self.descContainerLayout.setSpacing(5)
+        
+        description = self.photoData.get('description', '')
+        
+        if description:
+            # Show existing description
+            self.descValueLabel = QLabel(description)
+            self.descValueLabel.setStyleSheet("""
+                color: #2d2d2d;
+                font-size: 10pt;
+                margin-bottom: 10px;
+            """)
+            self.descValueLabel.setWordWrap(True)
+            self.descContainerLayout.addWidget(self.descValueLabel)
+        else:
+            # Show "Add Description" button
+            self.addDescBtn = QPushButton("+ Add Description")
+            self.addDescBtn.setStyleSheet("""
+                QPushButton {
+                    background-color: #F8F6EB;
+                    color: #504B38;
+                    border: 1px dashed #D6CFAA;
+                    border-radius: 6px;
+                    font-size: 9pt;
+                    font-weight: 600;
+                    padding: 6px 12px;
+                    text-align: left;
+                }
+                QPushButton:hover {
+                    background-color: #FFFFFF;
+                    border-color: #B9B28A;
+                }
+            """)
+            self.addDescBtn.clicked.connect(self._onAddDescriptionClicked)
+            self.descContainerLayout.addWidget(self.addDescBtn)
+        
+        layout.addWidget(self.descContainer)
     
     def _addTagsSection(self, layout):
         """Add tags display section to layout."""
@@ -297,6 +349,7 @@ class PhotoViewer(QWidget):
             font-size: 11pt;
             font-weight: 600;
             font-family: 'Times New Roman', serif;
+            margin-bottom: 4px;
         """)
         layout.addWidget(tagsHeaderLabel)
         
@@ -307,48 +360,42 @@ class PhotoViewer(QWidget):
         else:
             tags = []
         
-        # Tags grid
-        tagsContainer = QWidget()
-        tagsGrid = QGridLayout(tagsContainer)
-        tagsGrid.setContentsMargins(0, 0, 0, 0)
-        tagsGrid.setHorizontalSpacing(8)
-        tagsGrid.setVerticalSpacing(6)
-        
-        for idx, tag in enumerate(tags):
-            chip = QFrame()
-            chip.setStyleSheet("""
-                QFrame {
-                    background-color: #EBE5C2;
-                    border: 1px solid #B9B28A;
-                    border-radius: 12px;
+        if not tags:
+            # Show a nice message when no tags exist
+            noTagsLabel = QLabel("No tags yet")
+            noTagsLabel.setStyleSheet("""
+                color: #888;
+                font-size: 9pt;
+                font-style: italic;
+                padding: 4px 0px;
+            """)
+            layout.addWidget(noTagsLabel)
+        else:
+            # Display tags as a clean bulleted list
+            tagsText = ""
+            for tag in tags:
+                tagsText += f"• {tag}\n"
+            
+            tagsListLabel = QLabel(tagsText.strip())
+            tagsListLabel.setStyleSheet("""
+                QLabel {
+                    color: #2d2d2d;
+                    font-size: 10pt;
+                    padding: 4px 8px;
+                    background-color: #F8F6EB;
+                    border-left: 3px solid #B9B28A;
+                    border-radius: 4px;
+                    line-height: 1.6;
                 }
             """)
-            chipLayout = QHBoxLayout(chip)
-            chipLayout.setContentsMargins(10, 4, 10, 4)
-            chipLayout.setSpacing(6)
-            
-            chipLabel = QLabel(tag)
-            chipLabel.setStyleSheet("color: #2d2d2d; font-size: 9pt;")
-            chipLayout.addWidget(chipLabel)
-            
-            # Remove button (not wired for now)
-            removeBtn = QPushButton("×")
-            removeBtn.setFixedSize(18, 18)
-            removeBtn.setStyleSheet("""
-                QPushButton { background: transparent; border: none; color: #504B38; font-size: 12pt; }
-                QPushButton:hover { color: #c82333; }
-            """)
-            chipLayout.addWidget(removeBtn)
-            
-            tagsGrid.addWidget(chip, idx // 2, idx % 2)
-        
-        layout.addWidget(tagsContainer)
+            tagsListLabel.setWordWrap(True)
+            layout.addWidget(tagsListLabel)
     
     def _addFavoritesButton(self, layout):
         """Add favorites toggle button to layout."""
-        favorite_val = self.photoData['favorite']
-        favBtn = QPushButton("Remove from Favorites" if favorite_val else "Add to Favorites")
-        favBtn.setStyleSheet("""
+        favorite_val = bool(self.photoData.get('favorite', 0))
+        self.favBtn = QPushButton("Remove from Favorites" if favorite_val else "Add to Favorites")
+        self.favBtn.setStyleSheet("""
             QPushButton {
                 background-color: #FFD166;
                 color: #2d2d2d;
@@ -360,8 +407,8 @@ class PhotoViewer(QWidget):
             }
             QPushButton:hover { background-color: #FFBE55; }
         """)
-        favBtn.clicked.connect(self._onToggleFavorite)
-        layout.addWidget(favBtn)
+        self.favBtn.clicked.connect(self._onToggleFavorite)
+        layout.addWidget(self.favBtn)
     
     def _addDeleteButton(self, layout):
         """Add delete button to layout."""
@@ -477,22 +524,28 @@ class PhotoViewer(QWidget):
         def confirmTag():
             tag = tagLineEdit.text().strip()
             if tag:
-                currentTags = self.photoData['tags'] or ''
-                newTags = (currentTags + ', ' + tag).strip(', ').strip()
-                # Persist new tag
+                # Add tag to photo (creates tag if needed)
                 try:
-                    self.dbManager.createTag(tag)
-                    photo_id = self.photoData['id']
-                    file_path = self.photoData['file_path']
+                    file_uuid = self.photoData.get('file_uuid')
+                    if not file_uuid:
+                        QMessageBox.warning(self, "Error", "Photo UUID not found.")
+                        return
                     
-                    if photo_id is not None:
-                        self.dbManager.updatePhotoTags(photo_id, newTags)
-                    elif file_path:
-                        self.dbManager.updatePhotoTagsByPath(file_path, newTags)
+                    # Add the tag (this also creates the tag if it doesn't exist)
+                    success = self.catalogDb.add_tag_to_photo(file_uuid, tag)
                     
-                    # Emit signal and close
-                    self.tagAdded.emit(photo_id, file_path, newTags)
-                    self.close()
+                    if success:
+                        # Fetch the actual current tags from the database
+                        tags_list = self.catalogDb.get_photo_tags(file_uuid)
+                        newTags = ', '.join(tags_list) if tags_list else ''
+                        
+                        # Emit signal to refresh viewer
+                        photo_id = self.photoData.get('id')
+                        file_path = self.photoData.get('file_path')
+                        self.tagAdded.emit(photo_id, file_path, newTags)
+                        self.close()
+                    else:
+                        QMessageBox.warning(self, "Error", "Failed to add tag. It may already be on this photo.")
                 except Exception as e:
                     QMessageBox.warning(self, "Error", f"Failed to add tag: {str(e)}")
                 return
@@ -513,6 +566,154 @@ class PhotoViewer(QWidget):
         dateLabel.setAlignment(Qt.AlignmentFlag.AlignRight)
         layout.addWidget(dateLabel)
     
+    def _onAddDescriptionClicked(self):
+        """Handle 'Add Description' button click - show inline edit field."""
+        # Clear the container
+        while self.descContainerLayout.count():
+            child = self.descContainerLayout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+        
+        # Create edit widget container
+        editWidget = QWidget()
+        editLayout = QVBoxLayout(editWidget)
+        editLayout.setContentsMargins(0, 0, 0, 0)
+        editLayout.setSpacing(8)
+        
+        # Text edit field
+        from PyQt6.QtWidgets import QTextEdit
+        self.descTextEdit = QTextEdit()
+        self.descTextEdit.setPlaceholderText("Enter description...")
+        self.descTextEdit.setMaximumHeight(100)
+        self.descTextEdit.setStyleSheet("""
+            QTextEdit {
+                background-color: white;
+                color: #504B38;
+                border: 1px solid #B9B28A;
+                border-radius: 4px;
+                padding: 8px;
+                font-size: 10pt;
+            }
+        """)
+        editLayout.addWidget(self.descTextEdit)
+        
+        # Buttons row
+        buttonsWidget = QWidget()
+        buttonsLayout = QHBoxLayout(buttonsWidget)
+        buttonsLayout.setContentsMargins(0, 0, 0, 0)
+        buttonsLayout.setSpacing(8)
+        
+        saveBtn = QPushButton("Save")
+        saveBtn.setFixedSize(80, 30)
+        saveBtn.setStyleSheet("""
+            QPushButton {
+                background-color: #28a745;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-size: 9pt;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #218838;
+            }
+        """)
+        saveBtn.clicked.connect(self._onSaveDescription)
+        buttonsLayout.addWidget(saveBtn)
+        
+        cancelBtn = QPushButton("Cancel")
+        cancelBtn.setFixedSize(80, 30)
+        cancelBtn.setStyleSheet("""
+            QPushButton {
+                background-color: #6c757d;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                font-size: 9pt;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #5a6268;
+            }
+        """)
+        cancelBtn.clicked.connect(self._onCancelDescriptionEdit)
+        buttonsLayout.addWidget(cancelBtn)
+        
+        buttonsLayout.addStretch()
+        editLayout.addWidget(buttonsWidget)
+        
+        self.descContainerLayout.addWidget(editWidget)
+        self.descTextEdit.setFocus()
+    
+    def _onSaveDescription(self):
+        """Save the description to database."""
+        description = self.descTextEdit.toPlainText().strip()
+        
+        if not description:
+            QMessageBox.warning(self, "Empty Description", "Please enter a description or click Cancel.")
+            return
+        
+        file_uuid = self.photoData.get('file_uuid')
+        if not file_uuid:
+            QMessageBox.warning(self, "Error", "Photo UUID not found.")
+            return
+        
+        try:
+            # Update description in database
+            success = self.catalogDb.update_photo(file_uuid, description=description)
+            
+            if success:
+                # Update local data
+                self.photoData['description'] = description
+                
+                # Clear the container and show the new description
+                while self.descContainerLayout.count():
+                    child = self.descContainerLayout.takeAt(0)
+                    if child.widget():
+                        child.widget().deleteLater()
+                
+                self.descValueLabel = QLabel(description)
+                self.descValueLabel.setStyleSheet("""
+                    color: #2d2d2d;
+                    font-size: 10pt;
+                    margin-bottom: 10px;
+                """)
+                self.descValueLabel.setWordWrap(True)
+                self.descContainerLayout.addWidget(self.descValueLabel)
+            else:
+                QMessageBox.warning(self, "Error", "Failed to save description.")
+        except Exception as e:
+            QMessageBox.warning(self, "Error", f"Failed to save description: {str(e)}")
+    
+    def _onCancelDescriptionEdit(self):
+        """Cancel description editing and restore 'Add Description' button."""
+        # Clear the container
+        while self.descContainerLayout.count():
+            child = self.descContainerLayout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+        
+        # Show "Add Description" button again
+        self.addDescBtn = QPushButton("+ Add Description")
+        self.addDescBtn.setStyleSheet("""
+            QPushButton {
+                background-color: #F8F6EB;
+                color: #504B38;
+                border: 1px dashed #D6CFAA;
+                border-radius: 6px;
+                font-size: 9pt;
+                font-weight: 600;
+                padding: 6px 12px;
+                text-align: left;
+            }
+            QPushButton:hover {
+                background-color: #FFFFFF;
+                border-color: #B9B28A;
+            }
+        """)
+        self.addDescBtn.clicked.connect(self._onAddDescriptionClicked)
+        self.descContainerLayout.addWidget(self.addDescBtn)
+    
     def _onClose(self):
         """Handle close button click."""
         self.closed.emit()
@@ -520,19 +721,27 @@ class PhotoViewer(QWidget):
     
     def _onToggleFavorite(self):
         """Handle favorite toggle."""
-        photo_id = self.photoData['id']
-        file_path = self.photoData['file_path']
-        current_favorite = self.photoData['favorite']
+        photo_id = self.photoData.get('id')
+        file_uuid = self.photoData.get('file_uuid')
+        current_favorite = int(self.photoData.get('favorite', 0))
         target_state = not bool(current_favorite)
         
         try:
-            if photo_id is not None:
-                self.dbManager.setFavoriteById(photo_id, target_state)
-            elif file_path:
-                self.dbManager.setFavoriteByPath(file_path, target_state)
+            # Persist via UUID when available
+            if file_uuid:
+                ok = self.catalogDb.update_photo(file_uuid, favorite=target_state)
+            else:
+                ok = False
+            if not ok:
+                QMessageBox.warning(self, "Favorites", "Failed to update favorite state.")
+                return
             
             # Emit signal with updated state
             self.favoriteToggled.emit(photo_id, target_state)
+            # Update local state and button label
+            self.photoData['favorite'] = 1 if target_state else 0
+            if hasattr(self, 'favBtn') and self.favBtn:
+                self.favBtn.setText("Remove from Favorites" if target_state else "Add to Favorites")
         except Exception:
             pass
     
@@ -550,13 +759,13 @@ class PhotoViewer(QWidget):
         )
         
         if reply == QMessageBox.StandardButton.Yes:
-            ok = self.photoImporter.removePhoto(file_path)
+            file_uuid = self.photoData.get('file_uuid', '')
+            ok = self.catalogDb.delete_photo(file_uuid)
             if not ok:
-                try:
-                    self.dbManager.deleteImage(os.path.basename(file_path))
-                except Exception:
-                    pass
+                QMessageBox.warning(self, "Error", "Failed to delete photo.")
+                return
             
             # Emit signal and close
             self.photoDeleted.emit(file_path)
             self.close()
+

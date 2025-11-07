@@ -1,6 +1,6 @@
 """
 MainWindow.py
-Author: Satwik
+Author: Satwik Singh
 Date: October 25, 2025
 
 Purpose:
@@ -10,31 +10,40 @@ Purpose:
 
 import sys
 import os
+from pathlib import Path
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                               QPushButton, QLabel, QLineEdit, QTextEdit,
                               QListWidget, QFileDialog, QMessageBox,
                               QTabWidget, QGroupBox, QScrollArea, QComboBox,
                               QInputDialog, QGridLayout, QFrame, QSplitter,
-                              QDialog, QDialogButtonBox, QProgressDialog)
+                              QDialog, QDialogButtonBox, QProgressDialog, QCheckBox,
+                              QListWidgetItem, QMenu)
 from PyQt6.QtCore import Qt, QSize, QTimer
 from PyQt6.QtGui import QPixmap, QIcon
 
-from src.PhotoImporter import PhotoImporter
-from src.DatabaseManager import DatabaseManager
-from src.SearchEngine import SearchEngine
-from src.SimilaritySearch import SimilaritySearch
-from src.FileScanner import scanDirectory
+from src.photo_importer import PhotoImporter
+from src.catalog_database import CatalogDatabase
+# Removed unavailable modules: SearchEngine, SimilaritySearch, FileScanner.
+# Provide a lightweight local directory scan helper.
+
 from gui.StyleSheet import getApplicationStyle, getTitleStyle, getSubtitleStyle
 from gui.components.Sidebar import Sidebar
 from gui.components.PhotoCard import PhotoCard
 from gui.components.PhotoViewer import PhotoViewer
-from gui.views.UploadView import UploadView
 from gui.views.PhotoGridView import PhotoGridView
 from gui.views.TagsView import TagsView
 from gui.views.AlbumsView import AlbumsView
 from gui.dialogs.ImportDialog import ImportDialog
 
-
+def scanDirectory(dirPath):
+    """Return list of Path objects for supported image files in dir (non-recursive)."""
+    p = Path(dirPath)
+    supported = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp', '.heic'}
+    files = []
+    for ext in supported:
+        files.extend(p.glob(f"*{ext}"))
+        files.extend(p.glob(f"*{ext.upper()}"))
+    return files
 class MainWindow(QMainWindow):
     """
     Main application window for the Photo Catalog.
@@ -56,11 +65,11 @@ class MainWindow(QMainWindow):
             os.makedirs(dataDir)
 
     def _initializeModules(self):
-        """Initialize all backend modules."""
-        self.photoImporter = PhotoImporter(self.dbPath)
-        self.dbManager = DatabaseManager(self.dbPath)
-        self.searchEngine = SearchEngine(self.dbPath)
-        self.similaritySearch = SimilaritySearch(self.dbPath)
+        """Initialize required backend modules (simplified)."""
+        self.catalogDb = CatalogDatabase(self.dbPath)
+        self.photoImporter = PhotoImporter(self.catalogDb)
+        # Remove legacy attributes for clarity
+        # self.dbManager, self.searchEngine, self.similaritySearch are deprecated.
 
     def _initializeUI(self):
         """Set up the user interface."""
@@ -103,7 +112,7 @@ class MainWindow(QMainWindow):
         
         # Top bar
         topBar = QWidget()
-        topBar.setFixedHeight(80)
+        topBar.setFixedHeight(85)
         # Remove bottom border to avoid the thin line under the toolbar
         topBar.setStyleSheet("background-color: #EBE5C2;")
         topBarLayout = QHBoxLayout(topBar)
@@ -134,32 +143,34 @@ class MainWindow(QMainWindow):
                 background-color: #FFFFFF;
             }
         """)
-        self.searchInput.textChanged.connect(self._onNameSearch)
+        # Remove live search - only search on button click
+        # self.searchInput.textChanged.connect(self._onNameSearch)
         searchRowLayout.addWidget(self.searchInput)
         
-        self.tagsFilterCombo = QComboBox()
-        self.tagsFilterCombo.addItem("TAGS ▼")
-        self.tagsFilterCombo.setFixedWidth(140)
-        self.tagsFilterCombo.setFixedHeight(42)
-        # ComboBox styling to match input
-        self.tagsFilterCombo.setStyleSheet("""
-            QComboBox {
+        # Tags filter button with custom dropdown
+        self.tagsFilterBtn = QPushButton("TAGS ▼")
+        self.tagsFilterBtn.setFixedWidth(140)
+        self.tagsFilterBtn.setFixedHeight(42)
+        self.tagsFilterBtn.setStyleSheet("""
+            QPushButton {
                 background-color: #F8F6EB;
                 border: 1px solid #D6CFAA;
                 border-radius: 8px;
                 padding: 6px 10px;
                 color: #504B38;
+                text-align: left;
             }
-            QComboBox::drop-down { border: none; }
-            QComboBox QAbstractItemView { background: #FFF; }
+            QPushButton:hover {
+                background-color: #FFFFFF;
+            }
         """)
-        self.tagsFilterCombo.currentIndexChanged.connect(self._onTagSearch)
-        self._populateTagsDropdown()
-        searchRowLayout.addWidget(self.tagsFilterCombo)
+        self.tagsFilterBtn.clicked.connect(self._showTagsFilterPopup)
+        self.selectedTags = []  # Track selected tags
+        searchRowLayout.addWidget(self.tagsFilterBtn)
         
         self.searchBtn = QPushButton("SEARCH")
         self.searchBtn.setFixedWidth(120)
-        self.searchBtn.setFixedHeight(40)
+        self.searchBtn.setFixedHeight(42)
         self.searchBtn.setStyleSheet("""
             QPushButton {
                 background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:0, y2:1, stop:0 #E6E0C7, stop:1 #D9D2AA);
@@ -180,10 +191,10 @@ class MainWindow(QMainWindow):
         topBarLayout.addWidget(searchRow)
         topBarLayout.addStretch()
         
-        # Upload button
+        # Upload button with dropdown menu
         self.uploadBtn = QPushButton("UPLOAD")
         self.uploadBtn.setFixedWidth(120)
-        self.uploadBtn.setFixedHeight(40)
+        self.uploadBtn.setFixedHeight(42)
         self.uploadBtn.setStyleSheet("""
             QPushButton {
                 background-color: #FFFFFF;
@@ -197,9 +208,62 @@ class MainWindow(QMainWindow):
                 background-color: #F0EEDC;
                 color: #333;
             }
+            QPushButton::menu-indicator {
+                image: none;
+            }
         """)
-        self.uploadBtn.clicked.connect(self._openUploadDialog)
+        
+        # Create dropdown menu
+        from PyQt6.QtWidgets import QMenu
+        uploadMenu = QMenu(self)
+        uploadMenu.setStyleSheet("""
+            QMenu {
+                background-color: #FFFFFF;
+                border: 1px solid #CFC6A3;
+                border-radius: 8px;
+                padding: 5px;
+            }
+            QMenu::item {
+                padding: 8px 20px;
+                color: #504B38;
+                font-weight: 600;
+            }
+            QMenu::item:selected {
+                background-color: #F0EEDC;
+                border-radius: 4px;
+            }
+        """)
+        
+        uploadFileAction = uploadMenu.addAction("UPLOAD FILE")
+        uploadFileAction.triggered.connect(self._uploadSingleFile)
+        
+        uploadFolderAction = uploadMenu.addAction("UPLOAD FOLDER")
+        uploadFolderAction.triggered.connect(self._uploadFolder)
+        
+        self.uploadBtn.setMenu(uploadMenu)
         topBarLayout.addWidget(self.uploadBtn)
+        
+        # Create Tag button (only visible in tags view)
+        self.createTagBtn = QPushButton("CREATE TAG")
+        self.createTagBtn.setFixedWidth(120)
+        self.createTagBtn.setFixedHeight(42)
+        self.createTagBtn.setStyleSheet("""
+            QPushButton {
+                background-color: #B9B28A;
+                color: #2d2d2d;
+                border: none;
+                border-radius: 8px;
+                font-weight: 700;
+                padding: 8px 10px;
+            }
+            QPushButton:hover {
+                background-color: #504B38;
+                color: #F8F3D9;
+            }
+        """)
+        self.createTagBtn.clicked.connect(self._onCreateTagFromTopBar)
+        self.createTagBtn.setVisible(False)  # Hidden by default
+        topBarLayout.addWidget(self.createTagBtn)
         
         mainContentLayout.addWidget(topBar)
         
@@ -216,19 +280,8 @@ class MainWindow(QMainWindow):
         mainContentLayout.addWidget(self.contentScrollArea)
 
     def _onTagSearch(self, index):
-        # Ignore first item ("TAGS ▼")
-        if index == 0:
-            return
-        tag = self.tagsFilterCombo.currentText()
-        if tag == "TAGS ▼":
-            return
-        try:
-            results = self.similaritySearch.findSimilarPhotosByTag(tag)
-            self._showSearchResults(results)
-        except Exception as e:
-            errorLabel = QLabel(f"Error searching by tag: {str(e)}")
-            errorLabel.setStyleSheet("color: red;")
-            self.contentLayout.addWidget(errorLabel)
+        """Deprecated - kept for compatibility. Use _performTagSearch instead."""
+        pass
 
     def _onNameSearch(self, text):
         # Live search by name
@@ -236,7 +289,13 @@ class MainWindow(QMainWindow):
             self._showAllPhotos()
             return
         try:
-            results = self.searchEngine.searchPhotos(title=text.strip(), tags=None)
+            results = self.catalogDb.search_photos_by_name(text.strip())
+            # Annotate with album list for badges
+            for p in results:
+                try:
+                    p['albums'] = self.catalogDb.get_photo_albums(p.get('file_uuid', ''))
+                except Exception:
+                    p['albums'] = []
             self._showSearchResults(results)
         except Exception as e:
             errorLabel = QLabel(f"Error searching by name: {str(e)}")
@@ -246,19 +305,55 @@ class MainWindow(QMainWindow):
     def _onExplicitSearch(self):
         # Explicit search button click
         name = self.searchInput.text().strip()
-        tagIndex = self.tagsFilterCombo.currentIndex()
-        tag = self.tagsFilterCombo.currentText() if tagIndex > 0 else None
+        
         try:
-            if name and tag and tag != "TAGS ▼":
-                # Search by both name and tag
-                results = self.searchEngine.searchPhotos(title=name, tags=tag)
+            if name and self.selectedTags:
+                # Search by both name and tags
+                # Get photos matching name first
+                name_results = self.catalogDb.search_photos_by_name(name)
+                
+                # Filter by tags (require all selected tags)
+                all_results = []
+                seen_uuids = set()
+                
+                for photo in name_results:
+                    photo_tags = photo.get('tags', '')
+                    if isinstance(photo_tags, str):
+                        photo_tags_list = [t.strip() for t in photo_tags.split(',') if t.strip()]
+                    else:
+                        photo_tags_list = photo_tags or []
+                    
+                    # Check if photo has ALL of the selected tags
+                    if all(tag in photo_tags_list for tag in self.selectedTags):
+                        photo_id = photo.get('file_uuid')
+                        if photo_id and photo_id not in seen_uuids:
+                            seen_uuids.add(photo_id)
+                            all_results.append(photo)
+                
+                # Annotate with album list for badges
+                for p in all_results:
+                    try:
+                        p['albums'] = self.catalogDb.get_photo_albums(p.get('file_uuid', ''))
+                    except Exception:
+                        p['albums'] = []
+                
+                results = all_results
             elif name:
-                results = self.searchEngine.searchPhotos(title=name, tags=None)
-            elif tag and tag != "TAGS ▼":
-                results = self.similaritySearch.findSimilarPhotosByTag(tag)
+                results = self.catalogDb.search_photos_by_name(name)
+                # Annotate with album list for badges
+                for p in results:
+                    try:
+                        p['albums'] = self.catalogDb.get_photo_albums(p.get('file_uuid', ''))
+                    except Exception:
+                        p['albums'] = []
+            elif self.selectedTags:
+                # Use the tag search method
+                self._performTagSearch()
+                return
             else:
                 self._showAllPhotos()
                 return
+            
             self._showSearchResults(results)
         except Exception as e:
             errorLabel = QLabel(f"Error searching: {str(e)}")
@@ -275,10 +370,42 @@ class MainWindow(QMainWindow):
         # Normalize incoming photo records to a format PhotoCard understands
         normalized = self._normalizePhotosForGrid(photos or [])
 
-        # Show search results using PhotoGridView (do not append all photos)
+        # Header row with title and back button
+        headerRow = QWidget()
+        headerLayout = QHBoxLayout(headerRow)
+        headerLayout.setContentsMargins(0, 0, 0, 0)
+        headerLayout.setSpacing(15)
+        
         titleLabel = QLabel("Results from search")
-        titleLabel.setStyleSheet("font-size: 14pt; font-weight: 600; color: #504B38; margin-bottom: 20px;")
-        self.contentLayout.addWidget(titleLabel)
+        titleLabel.setStyleSheet("font-size: 14pt; font-weight: 600; color: #504B38;")
+        headerLayout.addWidget(titleLabel)
+        
+        headerLayout.addStretch()
+        
+        # Back to All Photos button
+        backBtn = QPushButton("← Back to All Photos")
+        backBtn.setFixedWidth(160)
+        backBtn.setFixedHeight(40)
+        backBtn.setStyleSheet("""
+            QPushButton {
+                background-color: #FFFFFF;
+                color: #504B38;
+                border: 1px solid #D6CFAA;
+                border-radius: 8px;
+                font-weight: 600;
+                padding: 8px 10px;
+            }
+            QPushButton:hover {
+                background-color: #F0EEDC;
+                color: #333;
+            }
+        """)
+        backBtn.clicked.connect(lambda: self._switchView("all_photos"))
+        headerLayout.addWidget(backBtn)
+        
+        self.contentLayout.addWidget(headerRow)
+        
+        # Show search results using PhotoGridView
         grid = PhotoGridView(normalized, "No results found.", self)
         grid.photoClicked.connect(self._onPhotoCardClicked)
         grid.deleteRequested.connect(self._onPhotoDeleteRequested)
@@ -290,7 +417,7 @@ class MainWindow(QMainWindow):
         """
         Normalize different photo tuple/dict shapes into a format
         compatible with PhotoCard (either full tuple with file_path at [2]
-        or dict with keys: name, file_path, tags).
+        or dict with keys: name, file_path, tags, file_uuid).
 
         Supported inputs:
         - SearchEngine: (id, name, tags, file_path)
@@ -306,6 +433,7 @@ class MainWindow(QMainWindow):
                         # From SearchEngine: (id, name, tags, file_path)
                         _id, name, tags, file_path = p
                         normalized.append({
+                            "file_uuid": _id,  # id is the file_uuid
                             "name": name,
                             "file_path": file_path,
                             "tags": tags or "",
@@ -315,10 +443,13 @@ class MainWindow(QMainWindow):
                         normalized.append(p)
                 elif isinstance(p, dict):
                     # Ensure required keys exist
+                    file_uuid = p.get("file_uuid") or p.get("id") or ""
                     name = p.get("name") or p.get("title") or ""
-                    file_path = p.get("file_path") or p.get("path") or ""
+                    # Check for full_path first (from search_photos_by_tags), then file_path, then path
+                    file_path = p.get("full_path") or p.get("file_path") or p.get("path") or ""
                     tags = p.get("tags") or ""
                     normalized.append({
+                        "file_uuid": file_uuid,
                         "name": name,
                         "file_path": file_path,
                         "tags": tags,
@@ -331,14 +462,242 @@ class MainWindow(QMainWindow):
                 continue
         return normalized
 
-    def _populateTagsDropdown(self):
-        """Populate the tags dropdown with all available tags from database."""
+    def _showTagsFilterPopup(self):
+        """Show a dropdown menu with tag search and checkboxes for filtering."""
+        # Create a custom widget for the menu
+        menuWidget = QWidget()
+        menuWidget.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
+        menuWidget.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+        menuWidget.setStyleSheet("""
+            QWidget {
+                background-color: #FFFFFF;
+                border: 1px solid #D6CFAA;
+                border-radius: 8px;
+            }
+        """)
+        
+        layout = QVBoxLayout(menuWidget)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(8)
+        
+        # Search input for filtering tags
+        tagSearchInput = QLineEdit()
+        tagSearchInput.setPlaceholderText("🔍 Search tags...")
+        tagSearchInput.setStyleSheet("""
+            QLineEdit {
+                background-color: #F8F6EB;
+                border: 1px solid #D6CFAA;
+                border-radius: 6px;
+                padding: 6px 10px;
+                color: #504B38;
+            }
+            QLineEdit:focus {
+                border: 1px solid #B9B28A;
+            }
+        """)
+        layout.addWidget(tagSearchInput)
+        
+        # Scroll area for tags list
+        scrollArea = QScrollArea()
+        scrollArea.setWidgetResizable(True)
+        scrollArea.setMaximumHeight(250)
+        scrollArea.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scrollArea.setStyleSheet("""
+            QScrollArea {
+                border: none;
+                background-color: transparent;
+            }
+            QScrollBar:vertical {
+                border: none;
+                background: #F8F6EB;
+                width: 8px;
+                border-radius: 4px;
+            }
+            QScrollBar::handle:vertical {
+                background: #D6CFAA;
+                border-radius: 4px;
+            }
+        """)
+        
+        # Container for checkboxes
+        tagsContainer = QWidget()
+        tagsLayout = QVBoxLayout(tagsContainer)
+        tagsLayout.setContentsMargins(0, 0, 0, 0)
+        tagsLayout.setSpacing(2)
+        
+        scrollArea.setWidget(tagsContainer)
+        layout.addWidget(scrollArea)
+        
+        # Get all tags from database
         try:
-            tags = self.dbManager.getAllTags()
-            for tag in tags:
-                self.tagsFilterCombo.addItem(tag)
+            tags_data = self.catalogDb.get_all_tags()
+            # Extract tag names from dictionaries
+            all_tags = [tag.get('name', tag) if isinstance(tag, dict) else tag for tag in tags_data]
+        except Exception:
+            all_tags = []
+        
+        if not all_tags:
+            noTagsLabel = QLabel("No tags available")
+            noTagsLabel.setStyleSheet("color: #999; padding: 10px; font-style: italic;")
+            tagsLayout.addWidget(noTagsLabel)
+        else:
+            # Create checkboxes for each tag
+            tag_checkboxes = {}
+            for tag in all_tags:
+                checkbox = QCheckBox(tag)
+                checkbox.setStyleSheet("""
+                    QCheckBox {
+                        padding: 5px;
+                        color: #504B38;
+                        spacing: 8px;
+                    }
+                    QCheckBox::indicator {
+                        width: 16px;
+                        height: 16px;
+                        border-radius: 3px;
+                        border: 1px solid #D6CFAA;
+                        background-color: #FFFFFF;
+                    }
+                    QCheckBox::indicator:checked {
+                        background-color: #4a5cb8;
+                        border-color: #4a5cb8;
+                    }
+                    QCheckBox::indicator:hover {
+                        border-color: #B9B28A;
+                    }
+                    QCheckBox:hover {
+                        background-color: #F0EEDC;
+                        border-radius: 4px;
+                    }
+                """)
+                
+                # Check if tag is already selected
+                if tag in self.selectedTags:
+                    checkbox.setChecked(True)
+                
+                tagsLayout.addWidget(checkbox)
+                tag_checkboxes[tag] = checkbox
+            
+            tagsLayout.addStretch()
+            
+            # Filter tags based on search input
+            def filterTags(searchText):
+                searchText = searchText.lower()
+                for tag, checkbox in tag_checkboxes.items():
+                    # Show/hide based on search
+                    checkbox.setVisible(searchText in tag.lower())
+            
+            tagSearchInput.textChanged.connect(filterTags)
+        
+        # Buttons
+        buttonsLayout = QHBoxLayout()
+        buttonsLayout.setSpacing(8)
+        
+        clearBtn = QPushButton("Clear")
+        clearBtn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #666;
+                border: 1px solid #D6CFAA;
+                border-radius: 4px;
+                padding: 5px 12px;
+                font-size: 10pt;
+            }
+            QPushButton:hover {
+                background-color: #F0EEDC;
+            }
+        """)
+        if all_tags:
+            clearBtn.clicked.connect(lambda: [cb.setChecked(False) for cb in tag_checkboxes.values()])
+        buttonsLayout.addWidget(clearBtn)
+        
+        buttonsLayout.addStretch()
+        
+        cancelBtn = QPushButton("Cancel")
+        cancelBtn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #666;
+                border: 1px solid #D6CFAA;
+                border-radius: 4px;
+                padding: 5px 12px;
+                font-size: 10pt;
+            }
+            QPushButton:hover {
+                background-color: #F0EEDC;
+            }
+        """)
+        cancelBtn.clicked.connect(menuWidget.close)
+        buttonsLayout.addWidget(cancelBtn)
+        
+        applyBtn = QPushButton("Apply")
+        applyBtn.setStyleSheet("""
+            QPushButton {
+                background-color: #4a5cb8;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                padding: 5px 15px;
+                font-weight: bold;
+                font-size: 10pt;
+            }
+            QPushButton:hover {
+                background-color: #3a4ca8;
+            }
+        """)
+        
+        def applySelection():
+            if all_tags:
+                # Get selected tags
+                self.selectedTags = [tag for tag, cb in tag_checkboxes.items() if cb.isChecked()]
+                
+                # Update button text
+                if self.selectedTags:
+                    if len(self.selectedTags) == 1:
+                        self.tagsFilterBtn.setText(f"TAG: {self.selectedTags[0][:8]}...")
+                    else:
+                        self.tagsFilterBtn.setText(f"{len(self.selectedTags)} TAGS ▼")
+                else:
+                    self.tagsFilterBtn.setText("TAGS ▼")
+                
+                # Don't trigger search automatically - wait for SEARCH button click
+            
+            menuWidget.close()
+        
+        applyBtn.clicked.connect(applySelection)
+        buttonsLayout.addWidget(applyBtn)
+        
+        layout.addLayout(buttonsLayout)
+        
+        # Position the menu below the button
+        menuWidget.setFixedWidth(300)
+        buttonPos = self.tagsFilterBtn.mapToGlobal(self.tagsFilterBtn.rect().bottomLeft())
+        menuWidget.move(buttonPos.x(), buttonPos.y() + 5)
+        
+        # Show the menu
+        menuWidget.show()
+        tagSearchInput.setFocus()
+
+    def _performTagSearch(self):
+        """Perform search with selected tags."""
+        if not self.selectedTags:
+            self._showAllPhotos()
+            return
+        
+        try:
+            # Get photos that have ALL of the selected tags (AND logic)
+            all_results = self.catalogDb.search_photos_by_tags(self.selectedTags, require_all=True)
+            
+            # Annotate with album list for badges
+            for p in all_results:
+                try:
+                    p['albums'] = self.catalogDb.get_photo_albums(p.get('file_uuid', ''))
+                except Exception:
+                    p['albums'] = []
+            
+            self._showSearchResults(all_results)
         except Exception as e:
-            print(f"Error populating tags dropdown: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Failed to search by tags:\n{str(e)}")
 
     def _switchView(self, viewName):
         """Switch between different views."""
@@ -346,6 +705,29 @@ class MainWindow(QMainWindow):
         
         # Update sidebar button styles
         self.sidebar.setActiveView(viewName)
+        
+        # Show/hide top bar buttons based on view
+        if viewName == "all_photos":
+            # All Photos: Show search bar and upload button
+            self.searchInput.setVisible(True)
+            self.tagsFilterBtn.setVisible(True)
+            self.searchBtn.setVisible(True)
+            self.uploadBtn.setVisible(True)
+            self.createTagBtn.setVisible(False)
+        elif viewName == "tags":
+            # Tags: Show upload and create tag buttons only
+            self.searchInput.setVisible(False)
+            self.tagsFilterBtn.setVisible(False)
+            self.searchBtn.setVisible(False)
+            self.uploadBtn.setVisible(True)
+            self.createTagBtn.setVisible(True)
+        else:
+            # Albums, Favorites: Show only upload button
+            self.searchInput.setVisible(False)
+            self.tagsFilterBtn.setVisible(False)
+            self.searchBtn.setVisible(False)
+            self.uploadBtn.setVisible(True)
+            self.createTagBtn.setVisible(False)
         
         # Clear current content
         while self.contentLayout.count():
@@ -356,8 +738,6 @@ class MainWindow(QMainWindow):
         # Show appropriate view
         if viewName == "all_photos":
             self._showAllPhotos()
-        elif viewName == "upload":
-            self._showUploadView()
         elif viewName == "albums":
             self._showAlbumsView()
         elif viewName == "favorites":
@@ -367,11 +747,49 @@ class MainWindow(QMainWindow):
 
     def _showAllPhotos(self):
         """Display all photos in grid view using PhotoGridView."""
+        # Title and delete button row
+        headerRow = QWidget()
+        headerLayout = QHBoxLayout(headerRow)
+        headerLayout.setContentsMargins(0, 0, 0, 0)
+        headerLayout.setSpacing(15)
+        
         titleLabel = QLabel("All Photos")
-        titleLabel.setStyleSheet("font-size: 14pt; font-weight: 600; color: #504B38; margin-bottom: 20px;")
-        self.contentLayout.addWidget(titleLabel)
+        titleLabel.setStyleSheet("font-size: 14pt; font-weight: 600; color: #504B38;")
+        headerLayout.addWidget(titleLabel)
+        
+        headerLayout.addStretch()
+        
+        # Add delete button (same size as upload button)
+        deleteBtn = QPushButton("Delete Photos")
+        deleteBtn.setFixedWidth(120)
+        deleteBtn.setFixedHeight(40)
+        deleteBtn.setStyleSheet("""
+            QPushButton {
+                background-color: #dc3545;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 8px 10px;
+                font-weight: 700;
+                font-size: 10pt;
+            }
+            QPushButton:hover {
+                background-color: #c82333;
+            }
+        """)
+        deleteBtn.clicked.connect(self._beginDeleteFromAllPhotos)
+        headerLayout.addWidget(deleteBtn)
+        
+        self.contentLayout.addWidget(headerRow)
+        
         try:
-            photos = self.photoImporter.listImportedPhotos()
+            photos = self.catalogDb.get_all_photos()
+            # Annotate with album list for badges
+            for p in photos:
+                try:
+                    p['albums'] = self.catalogDb.get_photo_albums(p.get('file_uuid', ''))
+                except Exception:
+                    p['albums'] = []
         except Exception as e:
             errorLabel = QLabel(f"Error loading photos: {str(e)}")
             errorLabel.setStyleSheet("color: red;")
@@ -398,25 +816,42 @@ class MainWindow(QMainWindow):
         card.deleteRequested.connect(self._onPhotoDeleteRequested)
         return card
     
-    def _onPhotoDeleteRequested(self, file_path):
+    def _onPhotoDeleteRequested(self, file_uuid: str):
         """
         Handle photo deletion request from PhotoCard.
         
         Args:
-            file_path (str): Path to the photo file to delete.
+            file_uuid (str): UUID of the photo to delete.
         """
-        ok = self.photoImporter.removePhoto(file_path)
-        if not ok:
-            # Fallback delete via DatabaseManager if needed
-            try:
-                self.dbManager.deleteImage(os.path.basename(file_path))
-            except Exception:
-                pass
+        try:
+            ok = self.catalogDb.delete_photo(file_uuid)
+            if not ok:
+                QMessageBox.warning(self, "Delete Failed", "Photo could not be deleted.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to delete photo:\n{e}")
         self._refreshAfterDataChange()
 
     def _onPhotoCardClicked(self, photo):
-        """Handle photo card click to show full viewer."""
-        self._showPhotoViewer(photo)
+        """Handle photo card click to show full viewer with fresh data from database."""
+        # Get file_uuid from the clicked photo
+        file_uuid = photo.get('file_uuid') if isinstance(photo, dict) else None
+        
+        if file_uuid:
+            # Fetch fresh data from database
+            fresh_photo = self.catalogDb.get_photo_by_uuid(file_uuid)
+            if fresh_photo:
+                # Add albums info
+                try:
+                    fresh_photo['albums'] = self.catalogDb.get_photo_albums(file_uuid)
+                except Exception:
+                    fresh_photo['albums'] = []
+                self._showPhotoViewer(fresh_photo)
+            else:
+                # Fallback to original photo data if fetch fails
+                self._showPhotoViewer(photo)
+        else:
+            # No UUID available, use original photo data
+            self._showPhotoViewer(photo)
 
     def _showPhotoViewer(self, photo):
         """Show photo viewer overlay."""
@@ -426,7 +861,7 @@ class MainWindow(QMainWindow):
             self.viewerOverlay = None
         
         # Create PhotoViewer component
-        self.viewerOverlay = PhotoViewer(photo, self.dbManager, self.photoImporter, self)
+        self.viewerOverlay = PhotoViewer(photo, self.catalogDb, self.photoImporter, self)
         self.viewerOverlay.setGeometry(self.rect())
         
         # Connect signals
@@ -441,17 +876,17 @@ class MainWindow(QMainWindow):
     def _showImportDialog(self, filePath: str):
         """Show the ImportDialog for a single file and handle result."""
         try:
-            dlg = ImportDialog(self, filePath, self.dbManager.getAllAlbums())
+            dlg = ImportDialog(self, filePath, [a.get('name') for a in self.catalogDb.get_all_albums()])
             result = dlg.exec()
             if result == QDialog.DialogCode.Accepted:
                 album = dlg.selectedAlbum()
                 tags = dlg.tags()
                 description = dlg.description()
-                success = self.photoImporter.addPhoto(filePath, album, tags, description)
-                if success:
+                status = self.photoImporter.import_photo(Path(filePath), album=album, tags=tags, description=description)
+                if status == self.photoImporter.SUCCESS:
                     QMessageBox.information(self, "Imported", "Photo imported successfully.")
-                    if self.currentView == "all_photos":
-                        self._switchView("all_photos")
+                    # Always return to all photos view after successful import
+                    self._switchView("all_photos")
                 else:
                     QMessageBox.warning(self, "Duplicate", "This photo is already in the catalog.")
         except Exception as e:
@@ -483,18 +918,29 @@ class MainWindow(QMainWindow):
 
     def _onViewerTagAdded(self, photo_id, file_path, new_tags):
         """Handle tag addition from viewer."""
-        # Refresh viewer with updated tags
+        # Fetch fresh photo data from database and refresh viewer
         if hasattr(self, 'viewerOverlay') and self.viewerOverlay:
-            photo_data = self.viewerOverlay.photoData.copy()
-            photo_data['tags'] = new_tags
-            self._showPhotoViewer(photo_data)
-
-    def _showUploadView(self):
-        """Display the upload interface using UploadView component."""
-        view = UploadView(self)
-        view.uploadFileClicked.connect(self._uploadSingleFile)
-        view.uploadFolderClicked.connect(self._uploadFolder)
-        self.contentLayout.addWidget(view)
+            file_uuid = self.viewerOverlay.photoData.get('file_uuid')
+            if file_uuid:
+                # Fetch complete fresh data from database
+                fresh_photo = self.catalogDb.get_photo_by_uuid(file_uuid)
+                if fresh_photo:
+                    # Add albums info
+                    try:
+                        fresh_photo['albums'] = self.catalogDb.get_photo_albums(file_uuid)
+                    except Exception:
+                        fresh_photo['albums'] = []
+                    self._showPhotoViewer(fresh_photo)
+                else:
+                    # Fallback: just update tags in existing data
+                    photo_data = self.viewerOverlay.photoData.copy()
+                    photo_data['tags'] = new_tags
+                    self._showPhotoViewer(photo_data)
+            else:
+                # No UUID, fallback to old method
+                photo_data = self.viewerOverlay.photoData.copy()
+                photo_data['tags'] = new_tags
+                self._showPhotoViewer(photo_data)
 
     def _uploadSingleFile(self):
         """Handle upload single file button click."""
@@ -516,138 +962,163 @@ class MainWindow(QMainWindow):
             "Select Directory"
         )
         
-        if dirPath:
-            # Scan directory for photos first, then ask user which import mode to use
-            foundFiles = scanDirectory(dirPath)
-            if not foundFiles:
-                QMessageBox.information(self, "Bulk Import", "No photos found in the selected directory.")
-                return
-
-            # Ask user which import mode to use: Import All, Interactive, or Cancel
-            modeBox = QMessageBox(self)
-            modeBox.setWindowTitle("Bulk Import")
-            modeBox.setText(f"Found {len(foundFiles)} photo(s). Choose import mode:")
-            importAllBtn = modeBox.addButton("Import All (no metadata)", QMessageBox.ButtonRole.AcceptRole)
-            interactiveBtn = modeBox.addButton("Interactive (enter metadata per file)", QMessageBox.ButtonRole.ActionRole)
-            cancelBtn = modeBox.addButton(QMessageBox.StandardButton.Cancel)
-            modeBox.exec()
-            chosen = modeBox.clickedButton()
-            if chosen == cancelBtn:
-                return
-            if chosen == importAllBtn:
-                # Non-interactive batch import
-                imported = 0
-                skipped = 0
-                progress = QProgressDialog("Importing photos...", "Cancel", 0, len(foundFiles), self)
-                progress.setWindowModality(Qt.WindowModality.WindowModal)
-                for i, filePath in enumerate(foundFiles):
-                    if progress.wasCanceled():
-                        break
-                    progress.setValue(i)
-                    success = self.photoImporter.addPhoto(filePath, "", [], "")
-                    if success:
-                        imported += 1
-                    else:
-                        skipped += 1
-                progress.setValue(len(foundFiles))
-                QMessageBox.information(
-                    self,
-                    "Import Complete",
-                    f"Imported: {imported} photo(s)\nSkipped (duplicates/errors): {skipped}"
-                )
-                if self.currentView == "all_photos":
-                    self._switchView("all_photos")
-            else:
-                # Interactive per-file import: show ImportDialog.exec() for each file sequentially
-                imported = 0
-                skipped = 0
-                total = len(foundFiles)
-                for idx, filePath in enumerate(foundFiles, start=1):
-                    dlg = ImportDialog(self, filePath, self.dbManager.getAllAlbums())
-                    dlg.setWindowModality(Qt.WindowModality.ApplicationModal)
-                    result = dlg.exec()
-                    if result == QDialog.DialogCode.Accepted:
-                        album = dlg.selectedAlbum()
-                        tags = dlg.tags()
-                        description = dlg.description()
-                        try:
-                            success = self.photoImporter.addPhoto(filePath, album, tags, description)
-                            if success:
-                                imported += 1
-                        except Exception:
-                            skipped += 1
-                    else:
-                        # User cancelled interactive import; stop the batch
-                        break
-                QMessageBox.information(
-                    self,
-                    "Import Complete",
-                    f"Imported: {imported} photo(s)\nSkipped (duplicates/errors): {skipped}"
-                )
-                if self.currentView == "all_photos":
-                    self._switchView("all_photos")
-            # Ask for confirmation
-            reply = QMessageBox.question(
+        if not dirPath:
+            return
+        
+        # Check if folder has any supported image files before proceeding
+        has_images = False
+        for file_path in Path(dirPath).rglob('*'):
+            if file_path.is_file() and self.photoImporter._is_supported_format(file_path):
+                has_images = True
+                break
+        
+        if not has_images:
+            QMessageBox.warning(
                 self,
-                "Bulk Import",
-                f"Found {len(foundFiles)} photo(s).\n\nImport all without metadata?",
-                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                "Empty Folder",
+                "The selected folder contains no supported image files.\n\n"
+                "No album was created and nothing was imported."
+            )
+            return
+        
+        # Get default album name from folder name
+        default_album_name = os.path.basename(dirPath)
+        
+        # Create custom dialog for album name and description
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Import Folder")
+        dialog.setMinimumWidth(500)
+        
+        layout = QVBoxLayout(dialog)
+        
+        # Title
+        titleLabel = QLabel(f"Import photos from: {default_album_name}")
+        titleLabel.setStyleSheet("font-weight: bold; font-size: 12pt; margin-bottom: 10px;")
+        layout.addWidget(titleLabel)
+        
+        # Album name input
+        albumLayout = QHBoxLayout()
+        albumLayout.addWidget(QLabel("Album Name:"))
+        albumInput = QLineEdit()
+        albumInput.setText(default_album_name)
+        albumInput.setPlaceholderText("Enter album name...")
+        albumLayout.addWidget(albumInput)
+        layout.addLayout(albumLayout)
+        
+        # Description input
+        descLayout = QVBoxLayout()
+        descLayout.addWidget(QLabel("Description (applies to all photos):"))
+        descInput = QTextEdit()
+        descInput.setPlaceholderText("Optional description for all imported photos...")
+        descInput.setMaximumHeight(100)
+        descLayout.addWidget(descInput)
+        layout.addLayout(descLayout)
+        
+        # Info text
+        infoLabel = QLabel(
+            "• All photos in the folder (including subfolders) will be imported\n"
+            "• They will be added to the specified album\n"
+            "• All photos will have the same description\n"
+            "• Tags can be added individually after import"
+        )
+        infoLabel.setStyleSheet("color: #666; font-size: 10pt; margin-top: 10px;")
+        layout.addWidget(infoLabel)
+        
+        # Buttons
+        buttonLayout = QHBoxLayout()
+        buttonLayout.addStretch()
+        cancelBtn = QPushButton("Cancel")
+        cancelBtn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #666;
+                border: 1px solid #D6CFAA;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #F0EEDC;
+            }
+        """)
+        cancelBtn.clicked.connect(dialog.reject)
+        proceedBtn = QPushButton("Import")
+        proceedBtn.setStyleSheet("""
+            QPushButton {
+                background-color: #5cb85c;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #449d44;
+            }
+        """)
+        proceedBtn.setDefault(True)
+        proceedBtn.clicked.connect(dialog.accept)
+        buttonLayout.addWidget(cancelBtn)
+        buttonLayout.addWidget(proceedBtn)
+        layout.addLayout(buttonLayout)
+        
+        # Show dialog
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        
+        # Get values
+        album_name = albumInput.text().strip()
+        description = descInput.toPlainText().strip()
+        
+        if not album_name:
+            QMessageBox.warning(self, "Missing Album Name", "Please enter an album name.")
+            return
+        
+        # Show progress dialog
+        progress = QProgressDialog("Scanning and importing photos...", "Cancel", 0, 0, self)
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setValue(0)
+        
+        # Import folder using PhotoImporter
+        try:
+            imported_uuids = self.photoImporter.import_folder(
+                Path(dirPath),
+                album=album_name,
+                description=description
             )
             
-            if reply == QMessageBox.StandardButton.Yes:
-                print('[bulk import] user confirmed import, asking mode')
-                # Ask whether user wants interactive per-file metadata entry
-                perFile, ok = QInputDialog.getItem(
-                    self,
-                    "Import Mode",
-                    "Choose import mode:",
-                    ["Import All (no metadata)", "Interactive (enter metadata per file)"],
-                    0,
-                    False,
-                )
-                if not ok:
-                    print('[bulk import] user cancelled mode selection')
-                    return
-
-                imported = 0
-                skipped = 0
-
-                print(f'[bulk import] mode selected: {perFile}')
-                if perFile == "Import All (no metadata)":
-                    # Non-interactive batch import (existing behavior)
-                    progress = QProgressDialog("Importing photos...", "Cancel", 0, len(foundFiles), self)
-                    progress.setWindowModality(Qt.WindowModality.WindowModal)
-                    for i, filePath in enumerate(foundFiles):
-                        if progress.wasCanceled():
-                            break
-                        progress.setValue(i)
-                        success = self.photoImporter.addPhoto(filePath, "", [], "")
-                        if success:
-                            imported += 1
-                        else:
-                            skipped += 1
-                    progress.setValue(len(foundFiles))
-                else:
-                    # Start a non-blocking interactive import queue to avoid freezing
-                    self._startInteractiveBulkImport(foundFiles)
-                    # We don't block here; the interactive flow will manage itself and show a completion message
-
-                # Show results
+            progress.close()
+            
+            # Check if any photos were actually imported
+            total_imported = len(imported_uuids)
+            if total_imported > 0:
+                # Only create album if photos were successfully imported
+                self.catalogDb.create_album(album_name)
                 QMessageBox.information(
                     self,
                     "Import Complete",
-                    f"Imported: {imported} photo(s)\nSkipped (duplicates/errors): {skipped}"
+                    f"Successfully imported {total_imported} photo(s) into album '{album_name}'"
                 )
-
-                # Refresh view
-                if self.currentView == "all_photos":
-                    self._switchView("all_photos")
+                # Always return to all photos view after import
+                self._switchView("all_photos")
+            else:
+                QMessageBox.information(
+                    self,
+                    "Import Complete",
+                    "No new photos were imported. All photos may already exist in the catalog.\n\n"
+                    "No album was created."
+                )
+                
+        except Exception as e:
+            progress.close()
+            QMessageBox.critical(self, "Error", f"Failed to import folder:\n{str(e)}")
 
 
     def _showAlbumsView(self):
         """Display a list of album names using AlbumsView component."""
         try:
-            albums = self.dbManager.getAllAlbums()
+            albums = [a.get('name') for a in self.catalogDb.get_all_albums()]
         except Exception:
             albums = []
 
@@ -655,6 +1126,7 @@ class MainWindow(QMainWindow):
         view.albumSelected.connect(self._showPhotosInAlbum)
         view.createAlbumRequested.connect(self._onCreateAlbumRequested)
         view.selectPhotosRequested.connect(self._onSelectPhotosRequested)
+        view.deleteAlbumRequested.connect(self._deleteAlbumFromAlbumsView)
         self.contentLayout.addWidget(view)
 
     def _onCreateAlbumRequested(self):
@@ -667,7 +1139,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Missing Name", "Please enter an album name.")
             return
         try:
-            self.dbManager.createAlbum(name)
+            self.catalogDb.create_album(name)
             QMessageBox.information(self, "Album Created", f"Album '{name}' created.")
             # Refresh albums view
             self._switchView("albums")
@@ -678,9 +1150,13 @@ class MainWindow(QMainWindow):
         """Begin the select-photos-to-album flow for the given album."""
         # Show a temporary panel that lists all photos in selectable mode
         try:
-            all_photos = self.photoImporter.listImportedPhotos()
-            # Exclude photos that already belong to the target album
-            photos = [p for p in all_photos if (p.get('album') or '') != album]
+            # Load only photos that are not already in the target album
+            photos = self.catalogDb.get_photos_not_in_album(album)
+            for p in photos:
+                try:
+                    p['albums'] = self.catalogDb.get_photo_albums(p.get('file_uuid', ''))
+                except Exception:
+                    p['albums'] = []
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load photos:\n{str(e)}")
             return
@@ -706,8 +1182,34 @@ class MainWindow(QMainWindow):
         actions = QWidget()
         actionsLayout = QHBoxLayout(actions)
         addBtn = QPushButton("Add Selected to Album")
+        addBtn.setStyleSheet("""
+            QPushButton {
+                background-color: #5cb85c;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #449d44;
+            }
+        """)
         addBtn.clicked.connect(lambda: self._addSelectedToAlbum(grid, album))
         cancelBtn = QPushButton("Cancel")
+        cancelBtn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #666;
+                border: 1px solid #D6CFAA;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #F0EEDC;
+            }
+        """)
         cancelBtn.clicked.connect(lambda: self._switchView("albums"))
         actionsLayout.addWidget(addBtn)
         actionsLayout.addWidget(cancelBtn)
@@ -716,15 +1218,15 @@ class MainWindow(QMainWindow):
 
     def _addSelectedToAlbum(self, grid: 'PhotoGridView', album: str):
         """Assign the selected photos in the grid to the given album."""
-        selected = grid.getSelectedFilePaths()
+        selected = grid.getSelectedFileUUIDs()
         if not selected:
             QMessageBox.information(self, "No Selection", "Please select one or more photos to add.")
             return
         try:
             # Ensure album exists
-            self.dbManager.createAlbum(album)
-            for fp in selected:
-                self.dbManager.setAlbumForFile(fp, album)
+            self.catalogDb.create_album(album)
+            for file_uuid in selected:
+                self.catalogDb.add_photo_to_album(file_uuid, album)
             QMessageBox.information(self, "Success", f"Added {len(selected)} photo(s) to '{album}'.")
             # Return to albums view
             self._switchView("albums")
@@ -740,11 +1242,87 @@ class MainWindow(QMainWindow):
             child = self.contentLayout.takeAt(0)
             if child.widget():
                 child.widget().deleteLater()
+        
+        # Header row with title and back button
+        headerRow = QWidget()
+        headerLayout = QHBoxLayout(headerRow)
+        headerLayout.setContentsMargins(0, 0, 0, 0)
+        headerLayout.setSpacing(15)
+        
         titleLabel = QLabel(f"Photos in Album: {album}")
-        titleLabel.setStyleSheet("font-size: 14pt; font-weight: 600; color: #504B38; margin-bottom: 20px;")
-        self.contentLayout.addWidget(titleLabel)
+        titleLabel.setStyleSheet("font-size: 14pt; font-weight: 600; color: #504B38;")
+        headerLayout.addWidget(titleLabel)
+        
+        headerLayout.addStretch()
+        
+        # Back to Albums button
+        backBtn = QPushButton("← Back to Albums")
+        backBtn.setFixedWidth(160)
+        backBtn.setFixedHeight(40)
+        backBtn.setStyleSheet("""
+            QPushButton {
+                background-color: #FFFFFF;
+                color: #504B38;
+                border: 1px solid #D6CFAA;
+                border-radius: 8px;
+                font-weight: 600;
+                padding: 8px 10px;
+            }
+            QPushButton:hover {
+                background-color: #F0EEDC;
+                color: #333;
+            }
+        """)
+        backBtn.clicked.connect(lambda: self._switchView("albums"))
+        headerLayout.addWidget(backBtn)
+        
+        self.contentLayout.addWidget(headerRow)
+        
+        # Add actions row for album
+        actionsRow = QWidget()
+        actionsLayout = QHBoxLayout(actionsRow)
+        actionsLayout.setContentsMargins(0, 10, 0, 10)
+        removeBtn = QPushButton("Remove Photos")
+        removeBtn.setStyleSheet("""
+            QPushButton {
+                background-color: #f0ad4e;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #ec971f;
+            }
+        """)
+        removeBtn.clicked.connect(lambda: self._beginRemoveFromAlbum(album))
+        actionsLayout.addWidget(removeBtn)
+        deleteBtn = QPushButton("Delete Album")
+        deleteBtn.setStyleSheet("""
+            QPushButton {
+                background-color: #d9534f;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #c9302c;
+            }
+        """)
+        deleteBtn.clicked.connect(lambda: self._deleteAlbumFromView(album))
+        actionsLayout.addWidget(deleteBtn)
+        actionsLayout.addStretch()
+        self.contentLayout.addWidget(actionsRow)
         try:
-            photos = self.dbManager.getPhotosByAlbum(album)
+            photos = self.catalogDb.get_album_photos(album)
+            for p in photos:
+                try:
+                    p['albums'] = self.catalogDb.get_photo_albums(p.get('file_uuid', ''))
+                except Exception:
+                    p['albums'] = []
         except Exception:
             photos = []
         grid = PhotoGridView(photos, "This album has no photos yet.", self)
@@ -752,6 +1330,218 @@ class MainWindow(QMainWindow):
         grid.deleteRequested.connect(self._onPhotoDeleteRequested)
         self.contentLayout.addWidget(grid)
         self.contentLayout.addStretch()
+
+    def _beginRemoveFromAlbum(self, album: str):
+        """Start multi-select removal flow for a given album."""
+        try:
+            photos = self.catalogDb.get_album_photos(album)
+            for p in photos:
+                try:
+                    p['albums'] = self.catalogDb.get_photo_albums(p.get('file_uuid', ''))
+                except Exception:
+                    p['albums'] = []
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to load album photos:\n{str(e)}")
+            return
+        # Clear content
+        while self.contentLayout.count():
+            child = self.contentLayout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+        titleLabel = QLabel(f"Remove photos from album: {album}")
+        titleLabel.setStyleSheet("font-size: 14pt; font-weight: 600; color: #504B38; margin-bottom: 20px;")
+        self.contentLayout.addWidget(titleLabel)
+        grid = PhotoGridView(photos, "No photos in this album.", self)
+        grid.setPhotos(photos)
+        grid.enableSelectionMode(True)
+        self.contentLayout.addWidget(grid)
+        actions = QWidget()
+        actionsLayout = QHBoxLayout(actions)
+        removeBtn = QPushButton("Remove Selected")
+        removeBtn.setStyleSheet("""
+            QPushButton {
+                background-color: #f0ad4e;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #ec971f;
+            }
+        """)
+        removeBtn.clicked.connect(lambda: self._removeSelectedFromAlbum(grid, album))
+        cancelBtn = QPushButton("Cancel")
+        cancelBtn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #666;
+                border: 1px solid #D6CFAA;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #F0EEDC;
+            }
+        """)
+        cancelBtn.clicked.connect(lambda: self._showPhotosInAlbum(album))
+        actionsLayout.addWidget(removeBtn)
+        actionsLayout.addWidget(cancelBtn)
+        self.contentLayout.addWidget(actions)
+        self.contentLayout.addStretch()
+
+    def _removeSelectedFromAlbum(self, grid: 'PhotoGridView', album: str):
+        uuids = grid.getSelectedFileUUIDs()
+        if not uuids:
+            QMessageBox.information(self, "No Selection", "Select photos to remove.")
+            return
+        removed = 0
+        for u in uuids:
+            try:
+                if self.catalogDb.remove_photo_from_album(u, album):
+                    removed += 1
+            except Exception:
+                pass
+        QMessageBox.information(self, "Removed", f"Removed {removed} photo(s) from '{album}'.")
+        self._showPhotosInAlbum(album)
+
+    def _beginDeleteFromAllPhotos(self):
+        """Start multi-select deletion flow for all photos."""
+        try:
+            photos = self.catalogDb.get_all_photos()
+            for p in photos:
+                try:
+                    p['albums'] = self.catalogDb.get_photo_albums(p.get('file_uuid', ''))
+                except Exception:
+                    p['albums'] = []
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to load photos:\n{str(e)}")
+            return
+        
+        # Clear content
+        while self.contentLayout.count():
+            child = self.contentLayout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+        
+        titleLabel = QLabel("Select photos to delete")
+        titleLabel.setStyleSheet("font-size: 14pt; font-weight: 600; color: #504B38; margin-bottom: 20px;")
+        self.contentLayout.addWidget(titleLabel)
+        
+        # Warning message
+        warningLabel = QLabel("⚠️ Selected photos will be permanently deleted from the catalog!")
+        warningLabel.setStyleSheet("""
+            color: #dc3545;
+            font-weight: bold;
+            font-size: 10pt;
+            padding: 8px;
+            background-color: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 4px;
+        """)
+        self.contentLayout.addWidget(warningLabel)
+        
+        grid = PhotoGridView(photos, "No photos in catalog.", self)
+        grid.setPhotos(photos)
+        grid.enableSelectionMode(True)
+        self.contentLayout.addWidget(grid)
+        
+        actions = QWidget()
+        actionsLayout = QHBoxLayout(actions)
+        deleteBtn = QPushButton("Delete Selected")
+        deleteBtn.setStyleSheet("""
+            QPushButton {
+                background-color: #dc3545;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-weight: 600;
+                font-size: 10pt;
+            }
+            QPushButton:hover {
+                background-color: #c82333;
+            }
+        """)
+        deleteBtn.clicked.connect(lambda: self._deleteSelectedPhotos(grid))
+        cancelBtn = QPushButton("Cancel")
+        cancelBtn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: #666;
+                border: 1px solid #D6CFAA;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-weight: 600;
+                font-size: 10pt;
+            }
+            QPushButton:hover {
+                background-color: #F0EEDC;
+            }
+        """)
+        cancelBtn.clicked.connect(lambda: self._switchView("all_photos"))
+        actionsLayout.addWidget(deleteBtn)
+        actionsLayout.addWidget(cancelBtn)
+        actionsLayout.addStretch()
+        self.contentLayout.addWidget(actions)
+        self.contentLayout.addStretch()
+
+    def _deleteSelectedPhotos(self, grid: 'PhotoGridView'):
+        """Delete selected photos from the catalog."""
+        uuids = grid.getSelectedFileUUIDs()
+        if not uuids:
+            QMessageBox.information(self, "No Selection", "Please select photos to delete.")
+            return
+        
+        # Confirm deletion
+        reply = QMessageBox.question(
+            self,
+            "Confirm Deletion",
+            f"Are you sure you want to permanently delete {len(uuids)} photo(s) from the catalog?\n\n"
+            "This action cannot be undone!",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        
+        deleted = 0
+        for u in uuids:
+            try:
+                if self.catalogDb.delete_photo(u):
+                    deleted += 1
+            except Exception:
+                pass
+        
+        QMessageBox.information(self, "Deleted", f"Successfully deleted {deleted} photo(s) from catalog.")
+        self._switchView("all_photos")
+
+    def _deleteAlbumFromView(self, album_name: str):
+        """Delete an album from the album view, keeping all photos in catalog."""
+        reply = QMessageBox.question(
+            self,
+            "Confirm Album Deletion",
+            f"Are you sure you want to delete the album '{album_name}'?\n\n"
+            "Note: This will only delete the album. All photos will remain in the catalog.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                success = self.catalogDb.delete_album(album_name)
+                if success:
+                    QMessageBox.information(self, "Success",
+                                          f"Album '{album_name}' deleted successfully!")
+                    # Return to albums view after deletion
+                    self._switchView("albums")
+                else:
+                    QMessageBox.warning(self, "Error",
+                                      "Failed to delete album.")
+            except Exception as e:
+                QMessageBox.critical(self, "Error",
+                                   f"Failed to delete album:\n{str(e)}")
 
     def _refreshAfterDataChange(self):
         """Refresh the current view after data changes (delete/favorite/tag)."""
@@ -779,7 +1569,12 @@ class MainWindow(QMainWindow):
         self.contentLayout.addWidget(titleLabel)
 
         try:
-            photos = self.dbManager.getFavorites()
+            photos = self.catalogDb.get_favorite_photos()
+            for p in photos:
+                try:
+                    p['albums'] = self.catalogDb.get_photo_albums(p.get('file_uuid', ''))
+                except Exception:
+                    p['albums'] = []
         except Exception:
             photos = []
         grid = PhotoGridView(photos, "No favorites yet. Open a photo and click 'Add to Favorites'.", self)
@@ -789,39 +1584,183 @@ class MainWindow(QMainWindow):
         self.contentLayout.addStretch()
 
     def _showTagsView(self):
-        """Display list of tags using TagsView and wire actions for create/delete."""
+        """Display list of tags using TagsView and wire actions for tag clicks."""
         # Fetch tags from DB
         try:
-            tags = self.dbManager.getAllTags()
+            tags_data = self.catalogDb.get_all_tags()
+            # Extract tag names from dictionaries
+            tags = [tag.get('name', tag) if isinstance(tag, dict) else tag for tag in tags_data]
         except Exception:
             tags = []
 
         view = TagsView(tags, self)
         self.contentLayout.addWidget(view)
 
-        def onCreate():
-            text, ok = QInputDialog.getText(self, "Create Tag", "Tag name:")
-            if ok:
-                tag = text.strip()
-                if tag:
-                    self.dbManager.createTag(tag)
+        def onTagClicked(tag_name: str):
+            """Handle tag click - show edit/delete dialog."""
+            from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLineEdit
+            
+            dialog = QDialog(self)
+            dialog.setWindowTitle(f"Edit Tag: {tag_name}")
+            dialog.setMinimumWidth(400)
+            
+            layout = QVBoxLayout(dialog)
+            
+            # Tag name input
+            nameLayout = QHBoxLayout()
+            nameLayout.addWidget(QLabel("Tag Name:"))
+            nameInput = QLineEdit()
+            nameInput.setText(tag_name)
+            nameInput.setStyleSheet("""
+                QLineEdit {
+                    padding: 8px;
+                    border: 1px solid #D6CFAA;
+                    border-radius: 4px;
+                    font-size: 11pt;
+                }
+            """)
+            nameLayout.addWidget(nameInput)
+            layout.addLayout(nameLayout)
+            
+            # Buttons
+            buttonLayout = QHBoxLayout()
+            buttonLayout.addStretch()
+            
+            deleteBtn = QPushButton("Delete Tag")
+            deleteBtn.setStyleSheet("""
+                QPushButton {
+                    background-color: #dc3545;
+                    color: white;
+                    border: none;
+                    border-radius: 6px;
+                    padding: 8px 16px;
+                    font-weight: 600;
+                }
+                QPushButton:hover {
+                    background-color: #c82333;
+                }
+            """)
+            deleteBtn.clicked.connect(lambda: self._deleteTagFromDialog(dialog, tag_name))
+            buttonLayout.addWidget(deleteBtn)
+            
+            cancelBtn = QPushButton("Cancel")
+            cancelBtn.setStyleSheet("""
+                QPushButton {
+                    background-color: transparent;
+                    color: #666;
+                    border: 1px solid #D6CFAA;
+                    border-radius: 6px;
+                    padding: 8px 16px;
+                    font-weight: 600;
+                }
+                QPushButton:hover {
+                    background-color: #F0EEDC;
+                }
+            """)
+            cancelBtn.clicked.connect(dialog.reject)
+            buttonLayout.addWidget(cancelBtn)
+            
+            saveBtn = QPushButton("Save")
+            saveBtn.setStyleSheet("""
+                QPushButton {
+                    background-color: #4a5cb8;
+                    color: white;
+                    border: none;
+                    border-radius: 6px;
+                    padding: 8px 16px;
+                    font-weight: 600;
+                }
+                QPushButton:hover {
+                    background-color: #3a4ca8;
+                }
+            """)
+            saveBtn.clicked.connect(lambda: self._saveTagFromDialog(dialog, tag_name, nameInput.text().strip()))
+            buttonLayout.addWidget(saveBtn)
+            
+            layout.addLayout(buttonLayout)
+            
+            dialog.exec()
+
+        view.tagClicked.connect(onTagClicked)
+
+    def _onCreateTagFromTopBar(self):
+        """Handle create tag button click from top bar."""
+        text, ok = QInputDialog.getText(self, "Create Tag", "Tag name:")
+        if ok:
+            tag = text.strip()
+            if tag:
+                try:
+                    self.catalogDb.create_tag(tag)
+                    QMessageBox.information(self, "Success", f"Tag '{tag}' created successfully!")
                     self._switchView("tags")
+                except Exception as e:
+                    QMessageBox.critical(self, "Error", f"Failed to create tag:\n{str(e)}")
 
-        def onDelete():
-            try:
-                currentTags = self.dbManager.getAllTags()
-            except Exception:
-                currentTags = []
-            if not currentTags:
-                QMessageBox.information(self, "Delete Tag", "No tags available to delete.")
+    def _saveTagFromDialog(self, dialog, old_name: str, new_name: str):
+        """Save tag name change."""
+        if not new_name:
+            QMessageBox.warning(self, "Empty Name", "Tag name cannot be empty.")
+            return
+        
+        if new_name == old_name:
+            dialog.accept()
+            return
+        
+        try:
+            # Update tag name in database
+            # Note: This assumes you have an update_tag method. If not, we'll delete and recreate
+            # For now, let's use a simple approach: delete old and create new
+            # But first check if new name already exists
+            existing_tags = [tag.get('name', tag) if isinstance(tag, dict) else tag 
+                           for tag in self.catalogDb.get_all_tags()]
+            if new_name in existing_tags:
+                QMessageBox.warning(self, "Duplicate", f"Tag '{new_name}' already exists.")
                 return
-            tag, ok = QInputDialog.getItem(self, "Delete Tag", "Select a tag to delete:", currentTags, 0, False)
-            if ok and tag:
-                self.dbManager.deleteTag(tag)
-                self._switchView("tags")
+            
+            # Get all photos with this tag
+            photos_with_tag = self.catalogDb.search_photos_by_tags([old_name])
+            
+            # Delete old tag
+            self.catalogDb.delete_tag(old_name)
+            
+            # Create new tag
+            self.catalogDb.create_tag(new_name)
+            
+            # Re-add tag to photos
+            for photo in photos_with_tag:
+                file_uuid = photo.get('file_uuid', '')
+                if file_uuid:
+                    # Get current tags
+                    current_tags = photo.get('tags', '').split(',')
+                    current_tags = [t.strip() for t in current_tags if t.strip() and t.strip() != old_name]
+                    current_tags.append(new_name)
+                    # Update photo tags
+                    self.catalogDb.update_photo_tags(file_uuid, ','.join(current_tags))
+            
+            QMessageBox.information(self, "Success", f"Tag renamed from '{old_name}' to '{new_name}'!")
+            dialog.accept()
+            self._switchView("tags")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to update tag:\n{str(e)}")
 
-        view.createTagClicked.connect(onCreate)
-        view.deleteTagClicked.connect(onDelete)
+    def _deleteTagFromDialog(self, dialog, tag_name: str):
+        """Delete tag from dialog."""
+        reply = QMessageBox.question(
+            self,
+            "Confirm Deletion",
+            f"Are you sure you want to delete the tag '{tag_name}'?\n\n"
+            "This will remove it from all photos.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                self.catalogDb.delete_tag(tag_name)
+                QMessageBox.information(self, "Success", f"Tag '{tag_name}' deleted successfully!")
+                dialog.accept()
+                self._switchView("tags")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to delete tag:\n{str(e)}")
 
     # --- Interactive bulk import helpers ---
     def _startInteractiveBulkImport(self, files: list[str]):
@@ -867,7 +1806,7 @@ class MainWindow(QMainWindow):
         self._bulk_progress.setValue(currentIndex - 1)
 
         # Show ImportDialog non-blocking: we show it and connect to its finished signal
-        dialog = ImportDialog(self, filePath, self.dbManager.getAllAlbums())
+        dialog = ImportDialog(self, filePath, [a.get('name') for a in self.catalogDb.get_all_albums()])
         # When dialog is finished, handle result
         def on_finished(result):
             try:
@@ -876,8 +1815,8 @@ class MainWindow(QMainWindow):
                     tags = dialog.tags()
                     description = dialog.description()
                     try:
-                        success = self.photoImporter.addPhoto(filePath, album, tags, description)
-                        if success:
+                        status = self.photoImporter.import_photo(Path(filePath), album=album, tags=tags, description=description)
+                        if status == self.photoImporter.SUCCESS:
                             self._bulk_imported += 1
                         else:
                             self._bulk_skipped += 1
@@ -903,14 +1842,10 @@ class MainWindow(QMainWindow):
         # TODO: Implement live search filtering
         pass
 
-    def _openUploadDialog(self):
-        """Open upload dialog from top bar button."""
-        self._switchView("upload")
-
     def _loadUploadAlbums(self):
         """Load albums into upload dropdown."""
         try:
-            albums = self.dbManager.getAllAlbums()
+            albums = [a.get('name') for a in self.catalogDb.get_all_albums()]
             while self.uploadAlbumCombo.count() > 2:
                 self.uploadAlbumCombo.removeItem(2)
             for album in albums:
@@ -954,8 +1889,8 @@ class MainWindow(QMainWindow):
         tags = [tag.strip() for tag in tagsText.split(",") if tag.strip()]
         
         try:
-            success = self.photoImporter.addPhoto(filePath, album, tags, description)
-            if success:
+            status = self.photoImporter.import_photo(Path(filePath), album=album, tags=tags, description=description)
+            if status == self.photoImporter.SUCCESS:
                 QMessageBox.information(self, "Success", "Photo imported successfully!")
                 self.uploadFileInput.clear()
                 self.uploadAlbumCombo.setCurrentIndex(0)
@@ -964,8 +1899,10 @@ class MainWindow(QMainWindow):
                 self.uploadTagsInput.clear()
                 self.uploadDescInput.clear()
                 self._loadUploadAlbums()
-            else:
+            elif status == self.photoImporter.DUPLICATE:
                 QMessageBox.warning(self, "Duplicate", "This photo is already in the catalog.")
+            else:
+                QMessageBox.warning(self, "Import Skipped", "Photo could not be imported (copy error or unsupported format).")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to import photo:\n{str(e)}")
 
@@ -1231,7 +2168,7 @@ class MainWindow(QMainWindow):
     def _loadAlbums(self):
         """Load existing albums into the combo box."""
         try:
-            albums = self.dbManager.getAllAlbums()
+            albums = [a.get('name') for a in self.catalogDb.get_all_albums()]
             # Clear existing items except the first two
             while self.albumComboBox.count() > 2:
                 self.albumComboBox.removeItem(2)
@@ -1302,8 +2239,8 @@ class MainWindow(QMainWindow):
         tags = [tag.strip() for tag in tagsText.split(",") if tag.strip()]
 
         try:
-            success = self.photoImporter.addPhoto(filePath, album, tags, description)
-            if success:
+            status = self.photoImporter.import_photo(Path(filePath), album=album, tags=tags, description=description)
+            if status == self.photoImporter.SUCCESS:
                 QMessageBox.information(self, "Success",
                                       "Photo imported successfully!")
                 # Clear inputs
@@ -1317,9 +2254,11 @@ class MainWindow(QMainWindow):
                 self._refreshPhotoList()
                 self._loadAlbums()
                 self._refreshAlbumsList()
-            else:
+            elif status == self.photoImporter.DUPLICATE:
                 QMessageBox.warning(self, "Duplicate",
                                   "This photo is already in the catalog.")
+            else:
+                QMessageBox.warning(self, "Import Skipped", "Photo could not be imported (copy error or unsupported format).")
         except Exception as e:
             QMessageBox.critical(self, "Error",
                                f"Failed to import photo:\n{str(e)}")
@@ -1352,13 +2291,20 @@ class MainWindow(QMainWindow):
             imported = 0
             skipped = 0
             for filePath in foundFiles:
-                success = self.photoImporter.addPhoto(filePath, "", [], "")
-                if success:
-                    imported += 1
-                    self.scanResultText.append(f"✓ Imported: {os.path.basename(filePath)}")
-                else:
+                try:
+                    status = self.photoImporter.import_photo(Path(filePath), album="", tags=[], description="")
+                    if status == self.photoImporter.SUCCESS:
+                        imported += 1
+                        self.scanResultText.append(f"✓ Imported: {os.path.basename(filePath)}")
+                    elif status == self.photoImporter.DUPLICATE:
+                        skipped += 1
+                        self.scanResultText.append(f"⊗ Skipped (duplicate): {os.path.basename(filePath)}")
+                    else:
+                        skipped += 1
+                        self.scanResultText.append(f"⊗ Skipped (error/unsupported): {os.path.basename(filePath)}")
+                except Exception:
                     skipped += 1
-                    self.scanResultText.append(f"⊗ Skipped (duplicate): {os.path.basename(filePath)}")
+                    self.scanResultText.append(f"⊗ Skipped (exception): {os.path.basename(filePath)}")
 
             self.scanResultText.append(f"\n--- Summary ---")
             self.scanResultText.append(f"Imported: {imported}")
@@ -1400,7 +2346,7 @@ class MainWindow(QMainWindow):
     def _refreshPhotoList(self):
         """Refresh the browse photo list."""
         try:
-            photos = self.photoImporter.listImportedPhotos()
+            photos = self.catalogDb.get_all_photos()
             self.browseList.clear()
 
             if not photos:
@@ -1429,7 +2375,7 @@ class MainWindow(QMainWindow):
         photoName = photoText.split(" (")[0]
 
         try:
-            photos = self.photoImporter.listImportedPhotos()
+            photos = self.catalogDb.get_all_photos()
             for photo in photos:
                 if photo['name'] == photoName:
                     details = f"Name: {photo['name']}\n"
@@ -1468,10 +2414,10 @@ class MainWindow(QMainWindow):
         if reply == QMessageBox.StandardButton.Yes:
             try:
                 # Find the file path
-                photos = self.photoImporter.listImportedPhotos()
+                photos = self.catalogDb.get_all_photos()
                 for photo in photos:
                     if photo['name'] == photoName:
-                        success = self.photoImporter.removePhoto(photo['file_path'])
+                        success = self.catalogDb.delete_photo(photo['file_uuid'])
                         if success:
                             QMessageBox.information(self, "Success",
                                                   "Photo deleted successfully!")
@@ -1525,7 +2471,7 @@ class MainWindow(QMainWindow):
     def _refreshAlbumsList(self):
         """Refresh the list of albums."""
         try:
-            albums = self.dbManager.getAllAlbums()
+            albums = [a.get('name') for a in self.catalogDb.get_all_albums()]
             self.albumsList.clear()
 
             if not albums:
@@ -1534,7 +2480,7 @@ class MainWindow(QMainWindow):
 
             for album in albums:
                 # Get count of photos in album
-                photos = self.dbManager.getPhotosByAlbum(album)
+                photos = self.catalogDb.get_album_photos(album)
                 displayText = f"{album} ({len(photos)} photo{'s' if len(photos) != 1 else ''})"
                 self.albumsList.addItem(displayText)
 
@@ -1552,7 +2498,7 @@ class MainWindow(QMainWindow):
         albumName = albumText.split(" (")[0]
 
         try:
-            photos = self.dbManager.getPhotosByAlbum(albumName)
+            photos = self.catalogDb.get_album_photos(albumName)
             self.albumPhotosList.clear()
 
             if not photos:
@@ -1598,7 +2544,7 @@ class MainWindow(QMainWindow):
                 return
 
             try:
-                self.dbManager.renameAlbum(oldName, newName)
+                self.catalogDb.update_album(oldName, newName)
                 QMessageBox.information(self, "Success",
                                       f"Album renamed to '{newName}'.")
                 self._refreshAlbumsList()
@@ -1620,3 +2566,53 @@ class MainWindow(QMainWindow):
             return
 
         albumName = albumText.split(" (")[0]
+        
+        reply = QMessageBox.question(
+            self,
+            "Confirm Album Deletion",
+            f"Are you sure you want to delete the album '{albumName}'?\n\n"
+            "Note: This will only delete the album. All photos will remain in the catalog.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                success = self.catalogDb.delete_album(albumName)
+                if success:
+                    QMessageBox.information(self, "Success",
+                                          f"Album '{albumName}' deleted successfully!")
+                    self._refreshAlbumsList()
+                    self._loadAlbums()
+                else:
+                    QMessageBox.warning(self, "Error",
+                                      "Failed to delete album.")
+            except Exception as e:
+                QMessageBox.critical(self, "Error",
+                                   f"Failed to delete album:\n{str(e)}")
+
+    def _deleteAlbumFromAlbumsView(self, album_name: str):
+        """Delete an album from the albums list view, keeping all photos in catalog."""
+        reply = QMessageBox.question(
+            self,
+            "Confirm Album Deletion",
+            f"Are you sure you want to delete the album '{album_name}'?\n\n"
+            "Note: This will only delete the album. All photos will remain in the catalog.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                success = self.catalogDb.delete_album(album_name)
+                if success:
+                    QMessageBox.information(self, "Success",
+                                          f"Album '{album_name}' deleted successfully!")
+                    # Refresh the albums view
+                    self._switchView("albums")
+                else:
+                    QMessageBox.warning(self, "Error",
+                                      "Failed to delete album.")
+            except Exception as e:
+                QMessageBox.critical(self, "Error",
+                                   f"Failed to delete album:\n{str(e)}")
+
+

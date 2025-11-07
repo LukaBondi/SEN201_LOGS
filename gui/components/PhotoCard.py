@@ -20,11 +20,11 @@ class PhotoCard(QFrame):
     
     Signals:
         photoClicked (object): Emitted when the card is clicked.
-        deleteRequested (str): Emitted when delete button is clicked (file_path).
+        deleteRequested (str): Emitted when delete button is clicked (file_uuid).
     """
     
     photoClicked = pyqtSignal(object)
-    deleteRequested = pyqtSignal(str)
+    deleteRequested = pyqtSignal(str)  # Emits file_uuid
     
     def __init__(self, photo, parent=None):
         """
@@ -46,10 +46,12 @@ class PhotoCard(QFrame):
         # Schema: (id, name, file_path, album, tags, description, date_added)
         if isinstance(self.photo, tuple):
             self.file_path = self.photo[2] if len(self.photo) > 2 else ''
+            self.file_uuid = self.photo[0] if len(self.photo) > 0 else ''  # id is file_uuid
             self.name = self.photo[1] if len(self.photo) > 1 else os.path.basename(self.file_path)
             self.tags = self.photo[4] if len(self.photo) > 4 else ''
         else:
-            self.file_path = self.photo.get('file_path', '')
+            self.file_path = self.photo.get('full_path', self.photo.get('file_path', ''))
+            self.file_uuid = self.photo.get('file_uuid', '')
             self.name = self.photo.get('name', os.path.basename(self.file_path))
             self.tags = self.photo.get('tags', '')
     
@@ -79,9 +81,9 @@ class PhotoCard(QFrame):
         topBarLayout.setContentsMargins(8, 8, 8, 0)
         topBarLayout.addStretch()
         
-        deleteBtn = QPushButton("🗑 Delete")
-        deleteBtn.setFixedHeight(24)
-        deleteBtn.setStyleSheet("""
+        self.deleteBtn = QPushButton("🗑 Delete")
+        self.deleteBtn.setFixedHeight(24)
+        self.deleteBtn.setStyleSheet("""
             QPushButton { 
                 background-color: #dc3545; 
                 color: white; 
@@ -92,8 +94,8 @@ class PhotoCard(QFrame):
             }
             QPushButton:hover { background-color: #c82333; }
         """)
-        deleteBtn.clicked.connect(self._onDeleteClicked)
-        topBarLayout.addWidget(deleteBtn)
+        self.deleteBtn.clicked.connect(self._onDeleteClicked)
+        topBarLayout.addWidget(self.deleteBtn)
         layout.addWidget(topBar)
         
         # Photo thumbnail
@@ -121,22 +123,18 @@ class PhotoCard(QFrame):
         
         layout.addWidget(photoLabel)
         
-        # Photo info
+    # Photo info
         infoWidget = QWidget()
         infoWidget.setFixedHeight(40)
         infoWidget.setStyleSheet("background-color: white; border-radius: 0 0 8px 8px;")
         infoLayout = QVBoxLayout(infoWidget)
-        infoLayout.setContentsMargins(10, 5, 10, 5)
+        infoLayout.setContentsMargins(10, 10, 10, 10)
+        infoLayout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         nameLabel = QLabel(self.name[:25] + "..." if len(self.name) > 25 else self.name)
         nameLabel.setStyleSheet("color: #504B38; font-weight: 600; font-size: 9pt;")
         infoLayout.addWidget(nameLabel)
-        
-        tagsText = f"Tags: {self.tags[:20]}..." if self.tags and len(self.tags) > 20 else f"Tags: {self.tags or 'None'}"
-        tagsLabel = QLabel(tagsText)
-        tagsLabel.setStyleSheet("color: #B9B28A; font-size: 8pt;")
-        infoLayout.addWidget(tagsLabel)
-        
+
         layout.addWidget(infoWidget)
     
     def _onDeleteClicked(self):
@@ -158,7 +156,7 @@ class PhotoCard(QFrame):
         )
         
         if reply == QMessageBox.StandardButton.Yes:
-            self.deleteRequested.emit(self.file_path)
+            self.deleteRequested.emit(self.file_uuid)
     
     def mousePressEvent(self, event):
         """Handle mouse press to emit photoClicked signal or toggle selection if selectable."""

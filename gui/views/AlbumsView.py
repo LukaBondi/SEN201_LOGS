@@ -11,6 +11,7 @@ class AlbumsView(QWidget):
     albumSelected = pyqtSignal(str)
     createAlbumRequested = pyqtSignal()
     selectPhotosRequested = pyqtSignal(str)
+    deleteAlbumRequested = pyqtSignal(str)
 
     def __init__(self, albums: list[str], parent=None):
         super().__init__(parent)
@@ -53,11 +54,41 @@ class AlbumsView(QWidget):
             selectBtn.setFixedWidth(120)
             selectBtn.clicked.connect(lambda checked=False, a=album: self.selectPhotosRequested.emit(a))
             row.addWidget(selectBtn)
+            # Add 'Delete' button per album
+            deleteBtn = QPushButton("Delete")
+            deleteBtn.setFixedWidth(80)
+            deleteBtn.setStyleSheet("""
+                QPushButton {
+                    background-color: #d9534f;
+                    color: white;
+                    border: none;
+                    border-radius: 6px;
+                    padding: 8px;
+                    font-weight: 600;
+                }
+                QPushButton:hover {
+                    background-color: #c9302c;
+                }
+            """)
+            deleteBtn.clicked.connect(lambda checked=False, a=album: self.deleteAlbumRequested.emit(a))
+            row.addWidget(deleteBtn)
             layout.addLayout(row)
 
         # Create album button at bottom
         createBtn = QPushButton("+ Create New Album")
-        createBtn.setStyleSheet("font-weight: 600; background-color: #fff; color: #504B38; border: 1px solid #B9B28A; padding: 8px;")
+        createBtn.setStyleSheet("""
+            QPushButton {
+                font-weight: 600;
+                background-color: #fff;
+                color: #504B38;
+                border: 1px solid #B9B28A;
+                border-radius: 6px;
+                padding: 8px;
+            }
+            QPushButton:hover {
+                background-color: #F0EEDC;
+            }
+        """)
         createBtn.clicked.connect(lambda: self.createAlbumRequested.emit())
         layout.addWidget(createBtn)
         layout.addStretch()

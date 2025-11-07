@@ -9,7 +9,7 @@ Purpose:
 """
 
 # Color Palette
-CREAM = "#F8F3D9"        # Lightest - backgrounds, highlights
+CREAM = "#DDD7B0"        # Lightest - backgrounds, highlights (darker beige)
 LIGHT_BEIGE = "#EBE5C2"  # Light - secondary backgrounds
 OLIVE_TAUPE = "#B9B28A"  # Medium - borders, accents
 DARK_OLIVE = "#504B38"   # Darkest - text, primary elements
