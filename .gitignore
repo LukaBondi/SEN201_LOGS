@@ -1,5 +1,9 @@
+# Settings and caches
 .vscode/
 __pycache__/
+
+# Database file
+*.db
 
 # pyinstaller output
 dist/
