@@ -2,8 +2,9 @@
 .vscode/
 __pycache__/
 
-# Database file
+# Persistent storage
 *.db
+storage/
 
 # pyinstaller output
 dist/
