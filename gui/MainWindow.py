@@ -1006,7 +1006,7 @@ class MainWindow(QMainWindow):
         else:
             # Refresh the viewer with updated state
             if hasattr(self, 'viewerOverlay') and self.viewerOverlay:
-                photo_data = self.viewerOverlay.photoData.copy()
+                photo_data = self.viewerOverlay.photo_data.copy()
                 photo_data['favorite'] = 1 if new_state else 0
                 self._showPhotoViewer(photo_data)
 
@@ -1031,7 +1031,7 @@ class MainWindow(QMainWindow):
         """
         # Fetch fresh photo data from database and refresh viewer
         if hasattr(self, 'viewerOverlay') and self.viewerOverlay:
-            file_uuid = self.viewerOverlay.photoData.get('file_uuid')
+            file_uuid = self.viewerOverlay.photo_data.get('file_uuid')
             if file_uuid:
                 # Fetch complete fresh data from database
                 fresh_photo = self.catalogDb.get_photo_by_uuid(file_uuid)
@@ -1044,12 +1044,12 @@ class MainWindow(QMainWindow):
                     self._showPhotoViewer(fresh_photo)
                 else:
                     # Fallback: just update tags in existing data
-                    photo_data = self.viewerOverlay.photoData.copy()
+                    photo_data = self.viewerOverlay.photo_data.copy()
                     photo_data['tags'] = new_tags
                     self._showPhotoViewer(photo_data)
             else:
                 # No UUID, fallback to old method
-                photo_data = self.viewerOverlay.photoData.copy()
+                photo_data = self.viewerOverlay.photo_data.copy()
                 photo_data['tags'] = new_tags
                 self._showPhotoViewer(photo_data)
 
