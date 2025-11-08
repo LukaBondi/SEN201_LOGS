@@ -11,6 +11,30 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 import os
 
+class CommaSeparatedCompleter(QCompleter):
+    """Completer that operates on the last comma-separated token in a QLineEdit.
+
+    This allows autocomplete suggestions to continue working after the user types
+    a comma to enter multiple tags (e.g. "nature, sun" still suggests "sunset").
+    """
+    def splitPath(self, path: str):  # type: ignore[override]
+        # Only use the last token (after the final comma) as the completion prefix.
+        last_token = path.split(',')[-1].strip()
+        return [last_token]
+
+    def pathFromIndex(self, index):  # type: ignore[override]
+        # Replace just the last token with the selected completion while preserving prior tags.
+        completion = super().pathFromIndex(index)
+        widget = self.widget()
+        if widget is None:
+            return completion
+        current_text = widget.text()
+        parts = [p.strip() for p in current_text.split(',')]
+        parts[-1] = completion.strip()
+        # Reconstruct comma + space separated list.
+        new_text = ', '.join([p for p in parts if p])
+        return new_text
+
 
 class ImportDialog(QDialog):
     def __init__(self, parent, filePath: str, albums: list[str] | None = None):
@@ -81,11 +105,11 @@ class ImportDialog(QDialog):
                 
                 if all_tags:
                     # Create completer with existing tags
-                    completer = QCompleter(all_tags)
+                    completer = CommaSeparatedCompleter(all_tags)
                     completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
                     completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
                     completer.setFilterMode(Qt.MatchFlag.MatchContains)
-                    
+
                     # Style the completer popup
                     completer.popup().setStyleSheet("""
                         QListView {
@@ -108,7 +132,7 @@ class ImportDialog(QDialog):
                             background-color: #F8F6EB;
                         }
                     """)
-                    
+
                     self.tagsInput.setCompleter(completer)
         except Exception:
             pass  # If we can't get tags, just continue without autocomplete
