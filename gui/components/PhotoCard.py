@@ -1,6 +1,6 @@
 """
 PhotoCard.py
-Author: Satwik
+Author: Luka Bond
 Date: October 25, 2025
 
 Purpose:
@@ -39,7 +39,7 @@ class PhotoCard(QFrame):
         self._parsePhotoData()
         self.is_selectable = False
         self.is_selected = False
-        self._setupUi()
+        self._setupUI()
     
     def _parsePhotoData(self):
         """Parse photo data from tuple or dict format."""
@@ -55,7 +55,7 @@ class PhotoCard(QFrame):
             self.name = self.photo.get('name', os.path.basename(self.file_path))
             self.tags = self.photo.get('tags', '')
     
-    def _setupUi(self):
+    def _setupUI(self):
         """Set up the card UI."""
         self.setFixedSize(280, 220)
         self.setStyleSheet("""
@@ -172,6 +172,3 @@ class PhotoCard(QFrame):
         else:
             self.photoClicked.emit(self.photo)
         super().mousePressEvent(event)
-
-
-
